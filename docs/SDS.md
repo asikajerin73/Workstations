@@ -1,9 +1,15 @@
 # SDS —— ARK 工作站 软件设计说明书
 
-> 版本：**v1.3**｜对应 PLAN：**v3.2**｜日期：2026-10-31
+> 版本：**v1.4**｜对应 PLAN：**v3.2**｜日期：2026-10-31
 > **自足性标准**：一个没有参与规划的工程师（或干净上下文 agent），只读本文件 + 一张任务卡，就能写出符合预期的代码，不需要回来问任何问题。
 > 每条可被代码引用的规则都有编号 `CL-xxx`，任务卡的 `SDS_REFS` 只引用编号。
 > 技术验证依据：`docs/SPIKE-01-技术验证.md`、`docs/TECH-VERIFY.md`（实测结论，优先级高于任何"通常如此"的说法）
+>
+> **v1.4 修订**（T-004 实施期间发现，共 4 条 —— 都是「接口层无法实现条款语义」型缺陷）：
+> ㉑ **R6-01 通道注册按职责分函数**：新增 CL-104b。`test:summon` 的安全守卫（CL-105）不得与生产必需的 `window:summon/hide` 混在一个注册函数里，否则守卫会连带屏蔽正常呼出
+> ㉒ **R6-02 `WindowApi` 补 `notifyRendererExit()`**：v1.3 的接口块没有任何成员接受 `window:hidden-ack`，CL-219 的 ack 语义在接口层不可实现 → 实现者被迫写成 CL-219 明令禁止的纯 sleep
+> ㉓ **R6-03 `getWindow()` 返回 `BrowserWindowLike`**：v1.3 的 `BrowserWindow` 是 Electron 运行时类型，与"单测不启动 Electron"冲突
+> ㉔ **R6-04 flush 抛错等同超时**：CL-212/CL-215 只规定超时未规定抛错，一个插件的 flush bug 会卡住整个收起序列
 >
 > **v1.3 修订**（T-002 实施期间实测发现，共 4 条）：
 > ⑰ **R5-01 `E-PLUGIN-003` 原始规则不可达**：§4.3 schema 的 `id` 带同一正则，非法 id 会先落 002 → `validateManifest` 在 zod 前对字符串 id 做语义预检并映射到 003；schema 正则保留作第二道校验
@@ -251,6 +257,15 @@ workstation/
 | `test:summon` | R→M | — | `IpcResult<void>` | 仅 dev+ARK_E2E=1 |
 
 - **CL-104** 上表之外不得新增通道。新增需改 SDS。
+- **CL-104b（R6-01，T-004 实施发现 —— 通道注册必须按职责分函数，不能合成一个"总注册"）**
+  `src/main/ipc.ts` 按职责导出**三个并列、互不侵入**的注册函数：
+  - `registerWindowChannels({ipcMain, api})` → 注册 `window:summon` / `window:hide`
+  - `registerHiddenAck({ipcMain, api})` → 注册 `window:hidden-ack`，转调 `api.notifyRendererExit()`
+  - `registerTestChannels({ipcMain, api, isPackaged, env})` → **只**注册 `test:summon`，且受 CL-105 守卫
+
+  理由：`test:summon` 有独立的**安全守卫**（AC-M02-10 要求打包后必须 reject）。把它和窗口通道
+  混在一个函数里，守卫会连带屏蔽生产必需的 `window:summon`；且守卫一旦写错，AC-M02-10 与
+  正常呼出会同时失效，难以定位。分函数后每个函数的 handler 集合可被单独断言。
 - **CL-105** `test:summon` 仅在 `!app.isPackaged && process.env.ARK_E2E === '1'` 时注册；打包产物中该通道 invoke 必须返回 rejected（回归用例 AC-M02-10）。
 
 ### M-01 bootstrap
@@ -427,16 +442,86 @@ export interface WindowApi {
   init(): Promise<void>;                                  // 创建窗口，不 show
   summon(): Promise<void>;                                // CL-211
   hide(): Promise<void>;                                  // CL-212
-  getWindow(): BrowserWindow;
+  getWindow(): BrowserWindowLike;                          // ★ R6-03：结构化子集，见下
   getContentView(): Electron.View;                        // ★ 返回 View，不是 WebContentsView
   isVisible(): boolean;
   isFlushing(): boolean;                                  // ★ flush 进行中标志的持有者
   flushAllPlugins(): Promise<{ ok: string[]; timedOut: string[] }>;   // ★ 返回值语义
   waitForRendererExit(ms: number): Promise<boolean>;      // ★ 靠 IPC ack，不是固定 sleep
+  notifyRendererExit(): void;                             // ★ R6-02：window:hidden-ack 的落点
   setChromeMetrics(m: ChromeMetrics): void;               // CL-217
   recalcAll(): void;                                      // CL-251
 }
 ```
+
+**★ R6-02 `notifyRendererExit()` 的必要性（T-004 实施发现 —— v1.3 的接口块漏了这个入口）**
+
+CL-219 规定 `waitForRendererExit` 靠 renderer 回 `window:hidden-ack`，但 v1.3 的 `WindowApi`
+没有任何成员接受这个 ack。结果是**接口层面无法实现 CL-219 的语义**：IPC 层收到 ack 无处转交，
+实现者只能被迫写成 `setTimeout(ms)` 的纯 sleep——正是 CL-219 明令禁止的写法。
+
+```ts
+// 实现要点：单个 resolver 槽，不是事件总线
+let exitWaiter: ((ok: boolean) => void) | null = null;
+
+function waitForRendererExit(ms: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const done = (ok: boolean): void => {
+      if (!settled) { settled = true; exitWaiter = null; resolve(ok); }
+    };
+    exitWaiter = done;
+    setTimeout(() => done(false), ms);      // 只做超时兜底
+  });
+}
+
+function notifyRendererExit(): void { exitWaiter?.(true); }
+```
+
+`notifyRendererExit()` 由 `registerHiddenAck` 在收到 `window:hidden-ack` 时调用，**不返回值**
+（ack 是 fire-and-forget，见下方"新增通道"说明）。
+已知边界：并发两个等待者时只有最后一个收到 ack。CL-212 是串行序列、`hide()` 不可重入，
+不为此引入队列。
+
+**★ R6-03 `getWindow()` 返回结构化子集（T-004 实施发现）**
+
+v1.3 写 `getWindow(): BrowserWindow`，与"单测不启动 Electron"直接冲突（`BrowserWindow` 是
+Electron 运行时类型，vitest 里没有）。改为结构化子集：
+
+```ts
+/** window.ts 只依赖这些成员；index.ts 传入真实 BrowserWindow 时结构兼容。 */
+export interface BrowserWindowLike {
+  setBounds(b: Rectangle): void;
+  setAlwaysOnTop(flag: boolean, level?: string): void;
+  show(): void;
+  hide(): void;
+  focus(): void;
+  isVisible(): boolean;
+  isFocused(): boolean;
+  isAlwaysOnTop(): boolean;
+  isDestroyed(): boolean;
+  destroy?(): void;            // E-WIN-011 重建时需要；可选，便于假窗口省略
+  setSkipTaskbar(flag: boolean): void;
+  webContents: { send(channel: string, ...args: unknown[]): void; isDestroyed(): boolean };
+  contentView: unknown;
+  once(event: 'ready-to-show', cb: () => void): void;
+  on(event: string, cb: (...args: unknown[]) => void): void;
+}
+```
+- M-06 若需要 `BrowserWindow` 专有 API，**在装配处自行持有真实 `BrowserWindow` 引用**，
+  不要把 `WindowApi` 的返回类型扩回 `BrowserWindow`。
+- `destroy` 设为**可选**：E-WIN-011 用 `old.destroy !== undefined` 判定后再调用。
+
+**★ R6-04 `flushAllPlugins` 抛错语义（T-004 实施发现 —— CL-212/CL-215 只规定了超时）**
+
+`flushAllPlugins` 内部对每个目标用 `Promise.allSettled` 语义：**超时与抛错同等处理**——
+都进 `timedOut` 桶并记 `E-WIN-012`，然后**继续**收起序列。
+
+- 理由：CL-215 的"不阻塞用户"同样适用于抛错场景；让一个插件的 flush bug 卡住整个收起，
+  用户会以为应用卡死。
+- `E-WIN-012` 的等级：超时记 `warn`；抛错记 `error`（含插件 id 与错误消息），便于后续排查。
+- **但 `hide()` 自身序列里的 `send('window:hiding')` / `waitForRendererExit` 的异常不得吞**，
+  它们穿过 `finally` 抛出，`isFlushing` 仍复位为 `false`。
 
 **CL-219 三个易混函数的确切语义（R1-B-03 采纳）**
 
@@ -2122,6 +2207,10 @@ Ctrl+K（任意 WebContents）
 | GAP-09 | 2026-10-31 | `@types/node` 不在 17 个 devDeps 白名单，但 `types:["node"]` 需要它 → TS2688 | 不扩白名单；`types: []` 靠模块解析拾取。§10.2 第 4 条 | CLOSED |
 | GAP-10 | 2026-10-31 | 工具链版本漂移：`@typescript-eslint ^8.18.2` → 8.72.1 需 Node ≥20.19，本机 20.18.1 + `engine-strict` 装不上 | 锁字面 `8.18.2`；§10.1 钉死 Node `20.18.1`；T-016 复现文档必须写精确版本 | CLOSED |
 | GAP-02b | 2026-10-31 | ~~带空格输入「工作 站」与「工作站」视为同一查询~~ —— v1.0 说法错误。v1.2 的 run 切分下，`工 作 站` 被切成 3 个单字 run，**不再等价于** `工作站` | 已更正 CL-312 样例表与 AC-M12-05 | CLOSED |
+| GAP-11 | 2026-10-31 | **CL-104 只列通道、未规定注册函数如何分职责**：把 `test:summon` 的 CL-105 安全守卫与生产必需的 `window:summon/hide` 放进同一个注册函数，守卫会连带屏蔽正常呼出，且 AC-M02-10 与呼出故障难以区分（T-004 实施发现） | 改 SDS（R6-01）：新增 CL-104b，要求 `ipc.ts` 按职责导出三个并列注册函数，`registerTestChannels` 严格只注册 `test:summon` | **FIXED**（v1.4） |
+| GAP-12 | 2026-10-31 | **CL-218 的 `WindowApi` 无 ack 落点**：CL-219 要求 `waitForRendererExit` 靠 `window:hidden-ack`，但接口块没有任何成员接受该 ack，导致 CL-219 在接口层不可实现，实现者只能写成 CL-219 明令禁止的纯 sleep（T-004 实施发现） | 改 SDS（R6-02）：`WindowApi` 补 `notifyRendererExit(): void`，并给出单 resolver 槽实现要点与并发边界 | **FIXED**（v1.4） |
+| GAP-13 | 2026-10-31 | **CL-218 的 `getWindow(): BrowserWindow` 与"单测不启动 Electron"冲突**：`BrowserWindow` 是 Electron 运行时类型，vitest 环境没有（T-004 实施发现） | 改 SDS（R6-03）：返回 `BrowserWindowLike` 结构化子集；`destroy` 可选；M-06 需要专有 API 时在装配处自持真实引用 | **FIXED**（v1.4） |
+| GAP-14 | 2026-10-31 | **CL-212/CL-215 只规定 flush 超时、未规定 flush 抛错**：一个插件的 flush bug 可能卡住整个收起序列（T-004 实施发现） | 改 SDS（R6-04）：抛错等同超时——进 `timedOut` 桶、记 `E-WIN-012`（超时 warn / 抛错 error）、继续收起；但 `send`/`waitForRendererExit` 的异常不得吞 | **FIXED**（v1.4） |
 
 ---
 

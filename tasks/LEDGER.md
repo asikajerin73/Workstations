@@ -20,7 +20,9 @@
 | T-001 | 环境与工具链闸口 | — | M0 | 0.5 | `.tools/`, `.npmrc`, `package.json` | **DONE** | 1 | 调度者自验 | 2026-10-31 完成，见 `T-001.report.md`。推翻 ATTACH 上限旧结论 |
 | T-002 | 仓库骨架与构建基线 | T-001 | M3 | 1.5 | 见卡 | **DONE** | 1 | 独立终审 PASS | 2026-10-31 A1–A10 全绿；调度者与独立评审均复验；SDS 升至 v1.3 |
 | T-003 | 主题引擎 | T-002 | M4 | 0.5 | 见卡 | **DONE** | 1 | 独立评审 PASS_WITH_RISK（0 blocking） | A1–A10 通过、70 tests；A8 Electron 实跑通过；仅 deep-space 有 palette 数据；setter 中途异常可导致 CSS 部分写入，列非阻断风险 |
-| T-004 | 窗口两态与动效 | T-002,T-003 | M4 | 1.0 | 见卡 | **READY** | 0 | — | G-2、G-4；任务卡尚缺 |
+| T-004 | 窗口两态序列（主进程） | T-002,T-003 | M4 | 0.5 | 见卡 | **DONE** | 1 | 独立评审 PASS（0 blocking，5 nonblocking） | A1–A14 通过、94 tests；A13 真实 Electron 实测；调度者亲自复现变异测试（t0 后移 → 10 红）与探针；产出 4 条 CONTRACT_GAP→SDS v1.4 |
+| T-004b | 失焦自动收起 | T-004 | M4 | 0.25 | 待补 | PENDING | 0 | — | G-4 后半；依赖 settings 层 |
+| T-004c | 动效计时与入场动画 | T-004 | M4 | 0.25 | 待补 | PENDING | 0 | — | G-4 前半；AC-M02-05；**必须处理 NB-01**：E-WIN-011 重试分支未重取 t0 |
 | T-005 | 数据层 | T-002 | M5 | 1.0 | 见卡 | PENDING | 0 | — | G-8 |
 | T-006 | 网络出口白名单 | T-002 | M6 | 0.5 | 见卡 | PENDING | 0 | — | G-12 |
 | T-007 | 权限网关与审计 | T-005,T-006 | M6 | 1.0 | 见卡 | PENDING | 0 | — | G-7 |

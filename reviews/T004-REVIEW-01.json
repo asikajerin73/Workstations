@@ -1,0 +1,80 @@
+{
+  "artifact": "CODE",
+  "artifact_version": "T-004",
+  "review_round": 1,
+  "reviewer_role": "independent-code-reviewer-narrow",
+  "verdict": "PASS",
+  "blocking": [],
+  "nonblocking": [
+    {
+      "id": "NB-01",
+      "where": "src/main/window.ts:190-192",
+      "finding": "E-WIN-011 重建后重试分支重新执行 setBounds/setAlwaysOnTop，但未重新取 t0；t0 仍为首次 show 之前的取值，重试路径下 t0→show 的间隔包含 destroy+createWindow 的耗时。SDS CL-211/CL-213 未规定重试语义，CL-213 的 t1-t0<=320 在冷重建路径上可能被拉长。",
+      "impact": "仅测量口径，A13 实测 t0 为数值、summon 往返 262ms，未触发该路径。",
+      "suggestion": "若 M-02 动效断言（AC-M02-05）在极端路径抖动，可在重试前重取 t0，并在 SDS 补一句重试语义。"
+    },
+    {
+      "id": "NB-02",
+      "where": "src/main/window.ts:299-305（内层 catch）",
+      "finding": "该 catch 分支实际不可达：flushAllPlugins 内部用 Promise.allSettled + Promise.race 已吸收每个目标的 reject（进 timedOut 桶，见 234-244），函数本身不会抛出。报告 130-131 行『flush 阶段有内层 try/catch，出错继续收起』把该分支描述成活路径；A7 的『flush 抛错』用例（测试 289-315）走的其实是 allSettled 吸收路径，不是这条 catch。",
+      "impact": "无行为风险（防御性冗余），只是覆盖率盲点与报告措辞偏差。",
+      "suggestion": "保留该 catch（防御未来改动），但报告改为『flushAllPlugins 不抛出，内层 catch 为防御网』；或补一条直接让 flushAllPlugins 抛出的注入用例。"
+    },
+    {
+      "id": "NB-03",
+      "where": "src/main/window.ts:308-310",
+      "finding": "hide() 在 send('window:hiding') 前加了 webContents.isDestroyed() 守卫（CL-212 序列未列）；窗口已销毁时会跳过 send，但仍然空等 waitForRendererExit(150)。",
+      "impact": "最坏多耗 150ms，且 E-WIN-011 已在 summon 侧覆盖重建，A13 实跑 hidingCount:1 说明正常路径 send 确实发出。"
+    },
+    {
+      "id": "NB-04",
+      "where": "src/main/window.ts:97",
+      "finding": "delayMs 用 `as unknown as { unref?: () => void }` 双重断言给 setTimeout 返回值加 unref；不是 any，但属类型逃逸口（Node 环境 setTimeout 返回 Timeout，Electron 渲染侧为 number）。",
+      "impact": "无运行时风险；getContentView 处只用 `as View` 单次收窄，符合『不得用 any』。"
+    },
+    {
+      "id": "NB-05",
+      "where": "tests/unit/window-sequence.test.ts:281-282",
+      "finding": "A6 超时用例用真实墙钟（elapsed >= RENDERER_EXIT_TIMEOUT_MS - 60 且 < 1000），在极慢 CI 上属弱脆弱断言（已留 60ms 容差，方向正确）。",
+      "impact": "当前全绿（报告 686ms/24 tests），不构成阻塞。"
+    }
+  ],
+  "checks": [
+    {
+      "id": "C1-CL211-ORDER",
+      "result": "PASS",
+      "evidence": "window.ts:176 setBounds(computeWindowBounds(display)) → :177 setAlwaysOnTop(true,'screen-saver') → :179 const t0 = deps.now() → :183 target.show() → :205 target.focus() → :206 webContents.send('window:summoned',{t0})，与 SDS:539-547 六步逐条一致。t0 在 show() 之前取值，且处于 try 块（181）之外，源码顺序与运行顺序同时成立。display 解析在 :138-149（getDisplayNearestPoint，undefined 回退 getPrimaryDisplay，E-WIN-010 留痕 :144-147）。"
+    },
+    {
+      "id": "C2-CL212-ORDER",
+      "result": "PASS",
+      "evidence": "window.ts:288 flushing=true → :291 await flushAllPlugins({timeoutMs:PLUGIN_FLUSH_TIMEOUT_MS}) → :309 send('window:hiding') → :311 await waitForRendererExit(RENDERER_EXIT_TIMEOUT_MS) → :314 setAlwaysOnTop(false) → :315 hide() → :317 finally 中 flushing=false，与 SDS:552-558 五步 + 卡 A6/A7 一致。常量 :22 RENDERER_EXIT_TIMEOUT_MS=150、:25 PLUGIN_FLUSH_TIMEOUT_MS=1000 与 SDS 数值一致。"
+    },
+    {
+      "id": "C3-TEST-STRICT-ORDER",
+      "result": "PASS",
+      "evidence": "测试 :193-200（summon）与 :261-267（hide）用 expect(h.calls).toEqual([...]) 对有序 calls 数组做严格全序列比较，summon 快照内含 'now' 正处于 setAlwaysOnTop 与 'show' 之间，顺序错/多调一次都会红；另 :203-216 用 indexOf 下标断言 t0 早于 show。不是『各方法分别被调用过』式断言（配套的 toContain 仅用于 E-WIN-011/A12 等非顺序语义点，如 :312-313、:537-538）。"
+    },
+    {
+      "id": "C4-ISFLUSHING-TRYFINALLY",
+      "result": "PASS",
+      "evidence": "window.ts:289 try { :290-305 flush（含内层 try/catch）… :316 } finally { :317 flushing=false }，复位在 finally 中，send/wait 异常穿过 finally 抛出。测试 :289-315 断言 hide 期间 isFlushing()===true、flush 抛错后 false；:317-324 断言 send('window:hiding') 抛错时 hide rejects 且 isFlushing()===false（异常未被吞）。"
+    },
+    {
+      "id": "C5-GIT-SCOPE",
+      "result": "PASS",
+      "evidence": "git -C F:\\gal\\workstation status --porcelain 输出 9 行：M docs/SDS.md、M tasks/LEDGER.md（调度者范围）；M src/main/index.ts、M src/preload/shell.ts、?? src/main/ipc.ts、?? src/main/window.ts、?? tests/unit/window-sequence.test.ts、?? tasks/T-004.md、?? tasks/T-004.report.md。实施类改动恰好等于 TOUCH 白名单（window.ts / ipc.ts / index.ts / shell.ts / window-sequence.test.ts / T-004.md / T-004.report.md），无越界文件，shared/window-options.ts、shared/bounds.ts、package.json、lockfile 均未出现在列表中。注：git.exe 不在 PATH，用 C:\\Program Files\\Git\\cmd\\git.exe 执行。"
+    },
+    {
+      "id": "C6-NO-ANY-NO-SWALLOW",
+      "result": "PASS",
+      "evidence": "Select-String 扫 window.ts：\\bany\\b / eslint-disable / @ts-ignore 零命中。四处 catch 均有留痕或上抛：:157 destroy 失败→deps.log('error', E-WIN-011)；:184 show 抛错→log error + 重建；:196 二次失败→throw new ArkError('E-WIN-011')（不吞）；:299 flush 阶段→log error 后继续（R6-04 明许，且非静默）。唯一类型逃逸是 :97 的 as unknown as（非 any）。getContentView 用 :328 `as View` 单次收窄。"
+    },
+    {
+      "id": "C7-SDS-R6-ALIGN",
+      "result": "PASS",
+      "evidence": "SDS:441-454 接口块含 getWindow(): BrowserWindowLike、notifyRendererExit()、setChromeMetrics/recalcAll；window.ts:72-87 逐项实现（多出 getContentView(): View 与 flushAllPlugins 可选参 opts）。SDS:515-524 R6-04 要求超时 warn、抛错 error、send/wait 异常不吞——源码 :240 warn、:301 error、:309/:311 无 catch 包裹。SDS:261-264 要求 ipc.ts 三个并列注册函数——ipc.ts:59/73/79 正是 registerTestChannels / registerWindowChannels / registerHiddenAck，且 registerTestChannels 仅在 !isPackaged && ARK_E2E==='1'（:60、:38-40）注册且只注册 test:summon（:63）。"
+    }
+  ],
+  "next_action": "ACCEPT"
+}
