@@ -1,0 +1,217 @@
+{
+  "artifact": "PLAN",
+  "artifact_version": "v1.0",
+  "review_round": 1,
+  "reviewer_role": "spec-hawk",
+  "verdict": "FAIL",
+  "blocking": [
+    {
+      "id": "B-01",
+      "clause": "G-3",
+      "type": "infeasible",
+      "finding": "G-3 的「屏幕边缘热区」在窗口隐藏态没有可用的系统 API：Electron 无全局边缘热区能力，只能靠常驻透明置顶窗口或全局鼠标轮询，前者直接违反 G-2/G-11 的「任务栏与 Alt-Tab 无条目、不打扰」，后者依赖 §6 依赖表中不存在的原生模块。",
+      "evidence": "§2 G-3「屏幕边缘热区（…）逐个关闭后对应触发无效、开启后有效」；§2 G-2 要求启动后不可见且任务栏无条目；§6 依赖表仅列 Node/Electron/better-sqlite3/Vite/Framer Motion/react-virtual/OpenAI/Playwright，无边缘检测或鼠标轮询组件",
+      "required_fix": "二选一并写进 G-3：(a) S0 删除热区，移交 S1，并在 §3 增补非目标「S0 不做全局边缘热区」；(b) 保留则指定实现为 uiohook 全局 mousemove 轮询（阈值 8px 边缘带、冷却 300ms、命中区域为 workArea 的 4 条边各 1 屏高/宽），并把该原生模块登记进 §6 依赖表与 §5「核心依赖 ≤20」计数，验收命令固定为「隐藏态下用 SetCursorPos 把光标移到 (0, workArea.height/2) 并停留 100ms，1000ms 内 mainWindow.isVisible()===true」。",
+      "blocks_what": "运维期现场必然发现热区无法在隐藏态触发；实施者要么临时加一个置顶透明窗口（破坏 G-2/G-11 隐匿性并引入多屏 R-7 缺陷），要么在 M3 出口时把 G-3 判为未达成，导致里程碑卡死、返工改验收口径。"
+    },
+    {
+      "id": "B-02",
+      "clause": "G-3 与 §7 R-3 冲突",
+      "type": "contradiction",
+      "finding": "R-3 把「失败则降级为 Shell 内手势」当作缓解措施，但 workspace 呼出的前提正是 Shell 不可见——隐藏态没有 Shell 可做手势，降级分支不产生任何呼出效果；G-3 也没有为该分支定义验收，而 R-3 自评概率为高。",
+      "evidence": "§7 R-3「鼠标手势需全局钩子，Electron 无原生支持｜高｜中｜用 uiohook-napi 全局钩子 + $1 手势识别；失败则降级为『Shell 内手势』」；§2 G-2「应用启动后主窗口不可见」",
+      "required_fix": "把降级路径改成可执行的全局方案（如 uiohook 不可用时改用 PowerShell/Win32 GetCursorPos 轮询 + 触发序列检测），或把 G-3 的出口写成明确分支：「若 uiohook 在 Win11 x64 上安装/加载失败，G-3 降级为两源（热键+热区）并在 ADR-00x 记录，手势记 DEFERRED-S1」，同时给出手势的明确失败判定命令（钩子加载返回非 0 或 24h 内触发失败率 >10% 即触发降级）。",
+      "blocks_what": "一旦钩子装不上（高概率），G-3 这条「三种全部实现」永远无法验收，M3 出口条件失效；实施者会先按 R-3 写一个只能在可见窗口里做手势的假功能，评审时被判定不符，整段推翻重做。"
+    },
+    {
+      "id": "B-03",
+      "clause": "G-3",
+      "type": "untestable",
+      "finding": "G-3 的验收是「关闭后对应触发无效、开启后有效」，但「无效」没有可观测的期望值（观察多久？在哪断言？），且手势与热区只写「手工验收清单」而未给出清单条目格式，三条触发源里两条无法转成「命令 + 期望值」。",
+      "evidence": "§2 G-3「设置页三个开关存在；逐个关闭后对应触发无效、开启后有效（e2e 用例覆盖热键路径，手势与热区用手工验收清单）」；§9「逐条人工验收：G-2/G-3（手势与热区）」",
+      "required_fix": "把每条开关写成负向控制断言：关闭热键后 5s 内轮询 10 次 isVisible() 恒为 false；关闭手势后回放 3 次已录制动作序列，2s 内 isVisible() 仍为 false；关闭热区后光标沿四边各划过 1 次，2s 内 isVisible() 仍为 false。手工清单必须是「操作 → 期望值 → 实测」三列的表，每格填是/否 + 时间戳。",
+      "blocks_what": "「无效」永远可以被称为「大概没触发」，开关断路逻辑（例如误把开关只绑定 UI 状态）不会被任何断言捕获；G-3 在 M3 出口会以主观判断通过，随后在 M4 加插件后出现幽灵呼出，无法定位到开关失效。"
+    },
+    {
+      "id": "B-04",
+      "clause": "G-4 与 G-6/G-7 冲突",
+      "type": "contradiction",
+      "finding": "G-4 规定「失焦 800ms 后自动收起」，而 G-7 要求插件运行在独立 WebContentsView、G-6 的 e2e 要在插件内输入文字——焦点从 Shell 移到子 view 必然触发 blur，覆盖层会在输入中途自动隐藏，两条目标的验收互相破坏。",
+      "evidence": "§2 G-4「`Esc` 或失焦 800ms 后自动收起」；§2 G-6「e2e：呼出→Ctrl+K→输入『新建』→回车→笔记插件新建笔记成功」；§2 G-7「独立 WebContentsView 隔离」；§10 Q-8「每个插件独立 WebContentsView + preload 桥」",
+      "required_fix": "把「失焦」重新定义为应用级失焦：浏览器失焦且 `webContents.getAllWebContents()` 中无任何属于本应用的 webContents 处于 focused，并且 startTime 起 800ms 内没有 focus 事件回流；补一条 e2e：呼出→Ctrl+K→打开笔记插件→在插件输入框连续输入 3s→断言覆盖层仍 isVisible()===true。",
+      "blocks_what": "实现者会先按字面加 `win.on('blur')` 定时器，随后 G-6 的 e2e 必然红，为了救 e2e 又会把定时器改成 0 或删掉，G-4 的自动收起功能失效；三处（G-4/G-6/G-7）在同一周内来回改，是计划内最确定的一次返工。"
+    },
+    {
+      "id": "B-05",
+      "clause": "G-4",
+      "type": "untestable",
+      "finding": "「淡入+缩放入场（≤320ms）」没有定义计时起止点与采样手段，320ms 既可能指 CSS transition 时长也可能指端到端可见延迟，无法写出断言；同时全屏覆盖层首次 show 的冷启动渲染时间不受 320ms 预算覆盖，实际观感会超标而不被发现。",
+      "evidence": "§2 G-4「呼出为全屏覆盖层，带淡入+缩放入场（≤320ms）」",
+      "required_fix": "定义 t0 = 主进程调用 win.show() 的时刻，t1 = renderer 在 transitionend / Framer onAnimationComplete 中回传 performance.now() 的时刻；验收：连续 5 次呼出，每次 (t1 - t0) ≤ 320ms，且首次（冷启动后第一次）单独记录不参与断言但必须打印。测试代码位置写进 G-4 验收行。",
+      "blocks_what": "320ms 变成只能靠肉眼看的口径，动画退化到 600ms 也没人拦；等到用户抱怨「呼出有粘腻感」时才发现，此时动效与主题 token（G-5）已耦合，改动面覆盖整个入场组件。"
+    },
+    {
+      "id": "B-06",
+      "clause": "G-5",
+      "type": "ambiguous",
+      "finding": "G-5 声称「插件无法写死颜色」的证明手段只有「对插件目录内硬编码 hex 颜色报错」，但 hex 只是颜色写法之一，rgb()/hsl()/oklch()/具名色/Tailwind 色阶类（bg-slate-900）/内联 style 全部绕过，验收通过而目标未达成。",
+      "evidence": "§2 G-5「插件无法写死颜色（lint 规则拦截）」＋验收「`pnpm lint` 对插件目录内硬编码 hex 颜色报错」；§10 Q-6「tokens 单一来源」",
+      "required_fix": "把规则集写死为 5 类：(1) hex、(2) rgb/rgba/hsl/hsla/oklch/lab 函数、(3) 140 个 CSS 具名色、(4) Tailwind 非 token 色阶 utility（只允许 `bg-surface` 等 token 生成的类，用 allowlist 断言）、(5) JSX 内联 style 中的颜色字面量；并在 `plugins/fixtures/hardcoded-color/` 放 5 个负例文件，验收改成「`pnpm lint` 对该目录输出恰好 5 条错误、错误码分别为 ARK-COLOR-1..5」。",
+      "blocks_what": "插件作者只要写 `rgb(12 14 20)` 就能通过，主题一致性在第一个第三方插件接入时就被打破；等到发现时 token 消费方已散落在多个插件，回改需要逐个插件改样式并重跑全部截图验收。"
+    },
+    {
+      "id": "B-07",
+      "clause": "G-9",
+      "type": "untestable",
+      "finding": "G-9 的验收「搜索关键词命中正确篇数」没有给出期望数字与查询语句；且 FTS5+bigram 的建索引方式（contentless / external content / 自定义 tokenizer / 应用层切分后写入附加列）未定，「命中正确篇数」在不同实现下语义不同，无法写断言。",
+      "evidence": "§2 G-9「e2e：新建 3 篇笔记互相链接 → 反向链接面板各显示 2 条 → 搜索关键词命中正确篇数」；§7 R-8「中文按字二元切分（bigram）建索引，不用默认 unicode61」；§10 Q-9「FTS5 + bigram 自建索引列」",
+      "required_fix": "在 G-9 里写死夹具与期望值：正文分别为「工作台」「工作站架构」「无关内容」，查询「工作」期望命中 2 篇且返回顺序按 updated_at desc；查询「工作站」期望命中 1 篇（验证 bigram 拼接）；查询「作站」期望命中 1 篇（验证子串能力）；并给出 FTS 表 DDL 与索引列名（如 `notes_fts(body_bigram)`，写入前在应用层按 2-gram 空格拼接）。",
+      "blocks_what": "实施者会先按 unicode61 起一版、发现搜不到再改 bigram、再发现 bigram 结果命中数不为 1 而改查询语法，G-9 的验收在 D6-D7 反复重写；同一段时间里 G-10 的 AI 门面共用数据层，连带被阻塞。"
+    },
+    {
+      "id": "B-08",
+      "clause": "G-7",
+      "type": "infeasible",
+      "finding": "G-7 要求「强杀插件进程后 Shell 仍可用」，但 Electron 33 的 WebContentsView 不保证一 view 一 OS 进程（同 site 可合并），没有稳定的「插件 pid」可杀；「审计日志有记录」也未定义文件路径与字段，无法断言。",
+      "evidence": "§2 G-7「装一个故意越权的测试插件，其 `fs.read` 调用被拒绝且审计日志有记录；强杀插件进程后 Shell 仍可用」",
+      "required_fix": "把「强杀」改为 `view.webContents.forcefullyCrashRenderer()` 并断言主进程收到 `render-process-gone`（reason=crash）后 3s 内 Shell 仍可呼出与执行命令；审计日志固定为 `data/logs/audit-YYYYMMDD.jsonl`，每行 `{ts, task_id, plugin_id, capability, decision:\"allow|deny\", args_hash}`，验收命令：`Get-Content data/logs/audit-*.jsonl | ConvertFrom-Json | Where-Object {$_.decision -eq 'deny' -and $_.plugin_id -eq 'evil-fixture'} | Measure-Object` 的 Count ≥ 1。",
+      "blocks_what": "实施阶段会花半天找「怎么杀单个插件进程」，最后用一个与真实崩溃不同的手段糊过去；崩溃隔离这条最核心的插件宿主承诺实际上从未被验证，真实插件崩溃时直接白屏整个 Shell。"
+    },
+    {
+      "id": "B-09",
+      "clause": "G-8 与 §4/§5/G-12 冲突",
+      "type": "data-loss",
+      "finding": "G-8 把数据目录硬编码为绝对路径 `F:\\gal\\workstation\\data`，而 §4 场景要求「换台电脑整个搬走」、G-12 要求「按 README 从零跑通」——新机器可能没有 F 盘，启动即失败；同时全文无双开/单实例约束，两个进程会同时打开同一 WAL 库并争抢同一全局热键。",
+      "evidence": "§2 G-8「数据目录为 `F:\\gal\\workstation\\data`」；§4「换了台电脑，想整个搬走｜数据全在一个目录，拷走即用」；§5「数据目录：`F:\\gal\\workstation\\data`（便携，随项目走）」；§2 G-12「按 README 从零执行」",
+      "required_fix": "路径解析改为三级优先：`ARK_DATA_DIR` 环境变量 → 应用目录同级 `data/`（`path.join(path.dirname(app.getPath('exe')),'data')`）→ 默认 `<repo>/data`；F 盘路径只作为当前机器的 `.env` 示例。G-8 增加单实例验收：「第二次启动退出码 0 且 `data/` 下不出现第二个 `ark.db-wal` 写入者」，并规定主进程启动即 `app.requestSingleInstanceLock()`，失败 `app.quit()`。",
+      "blocks_what": "任何人（包括 3 个月后的本人）在新机器上克隆后启动即抛 ENOENT 或数据写到错误位置，README 复现失败；双开时一边开会话一边写笔记会出现 WAL 锁冲突与笔记覆盖，属于不可回滚的数据损失。"
+    },
+    {
+      "id": "B-10",
+      "clause": "§3 非目标",
+      "type": "missing",
+      "finding": "§1 把「剪辑、画布、终端、文件搜索、截图取字」明确列为要收敛的问题，但 N-1~N-10 只正面排除了编解码引擎、账号、市场、移动端、3D/多轨特效、本地模型、热更新、自启、多语言、跨平台，没有任何一条把终端/文件搜索/截图取字/画布排除在 S0 之外；G-x 只交付笔记 + AI + 命令面板。",
+      "evidence": "§1「创作与效率工具散落成十几个独立软件（编辑器、画布、剪辑、终端、笔记、文件搜索、截图取字）」；§3 N-1~N-10 全文（N-5 仅排除 3D 建模与多轨特效）；§2 G-1~G-12 无一涉及终端/文件搜索/截图取字",
+      "required_fix": "§3 增补 N-11：「S0/S1 不做终端、文件搜索、截图取字、画布，Shell 不注册对应命令、命令面板不出现入口、`src/` 与 `plugins/` 不引入对应依赖」；G-3 之后新增一条可执行验收：`Select-String -Path src/**/*.ts*,plugins/**/manifest.json -Pattern 'terminal|filesearch|screenshot|ocr|canvas'` 期望 0 命中。",
+      "blocks_what": "实施到 M4 出现命令面板后，最自然的下一步就是「顺手接个终端和文件搜索」，S0 的 5 天预算立即破口；R-1（功能贪多、烂尾、高概率致命）没有配套的可执行边界，等于只写了风险没写防线。"
+    },
+    {
+      "id": "B-11",
+      "clause": "G-10",
+      "type": "security",
+      "finding": "G-10「Key 存本地加密配置」只说了算法（AES-256-GCM），未定义主密钥来源与存放位置；若主密钥与密文同目录明文落盘，等于未加密，而 §5「隐私约束：任何内容不得出网」因此无法被任何断言验证。",
+      "evidence": "§2 G-10「Key 存本地加密配置」；§10 Q-2「Key 本地 AES-256-GCM 加密存储」；§5「隐私约束：唯一出网路径是用户显式配置的 AI API 调用」",
+      "required_fix": "指定主密钥经 Electron `safeStorage`（Windows DPAPI）封装，密文落 `data/secrets/ai.key.enc`，明文永不落盘、仅在主进程内存中；G-10 增加两条验收：`Select-String -Path data/secrets/* -Pattern 'sk-'` 期望 0 命中；把该文件拷到另一台机器/另一 Windows 用户下解密，期望返回 `E-AI-002` 且 Shell 不崩。同时给出错误码表头（E-AI-001 缺 Key / E-AI-002 解密失败 / E-AI-003 上游 4xx/5xx 映射）。",
+      "blocks_what": "实现者最省事的做法是把 32 字节 key 写在同目录 config.json 里，「加密」只是安慰；一旦有人拿到 data 目录（§4 场景正是「拷走即用」），API Key 直接泄露，且事后补救需要迁移已存数据与重发 Key。"
+    },
+    {
+      "id": "B-12",
+      "clause": "§8 里程碑 / §5 工期",
+      "type": "infeasible",
+      "finding": "§5 给 S0 5~7 个工作日，§8 把 12 条目标压进 D1-D7 且无缓冲：M3 两天内要完成 G-1~G-5（含 uiohook 原生模块、electron-rebuild、动效、token 管线、三触发源），M4 一天半要完成 G-6~G-8 与 G-11，M5 一天半完成笔记插件（双链+反链+FTS5 bigram+自动保存）与 AI 门面，M6 一天内还要 6 条 ADR 与 README；同时 R-1/R-3/R-5 三条高概率风险零预留。",
+      "evidence": "§5「时间：S0 目标 5~7 个工作日（按可并行任务估算）」；§8 M3「G-1~G-5 全绿｜D4-D5」、M4「G-6~G-8、G-11 全绿｜D5-D6」、M5「G-9、G-10 全绿｜D6-D7」、M6「G-12 通过｜D7」；§7 R-1 概率高/影响致命，R-3 概率高，R-5 概率高",
+      "required_fix": "重排为：M1 出口改为「本评审 blocking 全部关闭」并承认 D1 已被评审消耗；在 D3 插入 ABI 冒烟闸（`pnpm exec electron-rebuild -f -w better-sqlite3` 后在 Electron 主进程里 `require('better-sqlite3')` 成功即 M3 准入）；把 G-3 的手势与热区、G-11 的防截屏移出 S0，S0 承诺改为 G-1/G-2/G-4/G-5/G-6/G-7/G-8/G-9/G-10/G-12 共 10 条，工期改为 8~10 个工作日或明确「并行 2 会话」。",
+      "blocks_what": "D5 必然出现「M3 未全绿但已开 M4」的越线，任务卡在依赖未完成的内核上编写，产生返工；更常见的结果是砍验收而不是砍范围（把 G-3 降级为「实现了但没验收」），计划从此失去真实性。"
+    }
+  ],
+  "nonblocking": [
+    {
+      "id": "N-01",
+      "clause": "G-2",
+      "finding": "「Alt-Tab 列表中不出现」没有只读 API 可断言，而 skipTaskbar 在该平台存在已知失效场景（窗口被 focus 后重新入列）。",
+      "suggestion": "改用 `win.isSkipTaskbar()` 与 `win.isVisible()` 组合断言作为 CI 代理，Alt-Tab 目视确认降级为 M6 一次性手记，不算 G-2 通过条件。"
+    },
+    {
+      "id": "N-02",
+      "clause": "§6 与 §5",
+      "finding": "§5 技术约束写死 Node 20 LTS，§6 备选栏却写「用 DSH 自带 Node 24（兼容性风险）」，两处对运行时版本的口径不一致且无裁决人。",
+      "suggestion": "在 §6 该行加注「S0 不采用，需 ADR 批准」，或直接删除该备选。"
+    },
+    {
+      "id": "N-03",
+      "clause": "G-11",
+      "finding": "「隐藏标记为私密的插件」未定义标记载体（manifest 字段名、类型、默认值），演示模式的输入契约缺失。",
+      "suggestion": "在 G-11 写死 `manifest.json` 字段 `private: boolean`（默认 false），并给出对应 JSON Schema 片段。"
+    },
+    {
+      "id": "N-04",
+      "clause": "§5 隐私约束",
+      "finding": "约束里点名「剪贴板」内容不得出网，但 G-1~G-12 没有任何剪贴板能力，也没有非目标排除它，属于约束覆盖了不存在的能力。",
+      "suggestion": "删除「剪贴板」字样，或在 §3 增补「S0 不读取系统剪贴板」。"
+    },
+    {
+      "id": "N-05",
+      "clause": "G-1",
+      "finding": "「`dist/` 与 `out/` 存在」未说明两目录各自装什么；electron-vite 默认只产出 `out/`，`dist/` 通常来自渲染层构建，双产物口径含糊。",
+      "suggestion": "写明 `out/main`、`out/preload`、`out/renderer` 为 electron-vite 产物，`dist/` 仅存放安装包，验收改为「`out/main/index.js` 与 `dist/*.exe` 存在」。"
+    },
+    {
+      "id": "N-06",
+      "clause": "§9",
+      "finding": "验收总表含 `pnpm lint → exit 0`，但 G-1 的构建目标与 M3 出口只要求 typecheck/build，lint 不在任何里程碑闸口上。",
+      "suggestion": "把 lint 并入 G-1 的验收命令组，或新增 G-13「静态检查闸」。"
+    },
+    {
+      "id": "N-07",
+      "clause": "R-8",
+      "finding": "R-8 的触发信号写成「搜『工作站』搜不到『工作』」，但 bigram 方案下「工作」是「工作站」的 2-gram 子串，应当命中，该信号与所选方案自相矛盾。",
+      "suggestion": "把触发信号改为「查询 2 字词命中率为 0 或返回结果数与其 2-gram 出现次数不符」。"
+    },
+    {
+      "id": "N-08",
+      "clause": "Q-6 / R-4",
+      "finding": "「玻璃拟态」依赖 backdrop-filter，而 G-11 的 setContentProtection 在部分驱动下会黑屏（R-4 已列），两者叠加时没有渲染降级路径。",
+      "suggestion": "在 R-4 缓解措施中加「contentProtection 开启时主题降级为不透明背景（token `--surface-blur: none`）」。"
+    }
+  ],
+  "questions_for_owner": [
+    {
+      "id": "Q-01",
+      "question": "手势模板的录制 UI 是否属于 S0？若不属于，G-3 在「无模板则手势不可用」时凭什么判通过？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-02",
+      "question": "数据目录是否只承诺单机单实例？若双开也算合法用法，G-8 必须先定义多进程写入与全局热键抢占策略。",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-03",
+      "question": "演示模式隐藏插件是「卸载 WebContentsView」还是「仅 UI 不渲染」？前者才能防内存残留被截，后者更快。",
+      "why_blocking": false
+    },
+    {
+      "id": "Q-04",
+      "question": "G-12 的「新机器」起点状态是什么（裸 Windows / 已装 Node 20 / 已有 pnpm store）？30 分钟预算按哪个算？",
+      "why_blocking": false
+    },
+    {
+      "id": "Q-05",
+      "question": "插件权限网关的声明粒度是「能力名」（fs.read）还是「路径模式」（fs.read:F:\\gal\\**）？后者直接影响 G-7 的拒绝用例写法。",
+      "why_blocking": false
+    }
+  ],
+  "rejected_claims": [
+    {
+      "claim": "G-3「三种呼出方式全部实现」有 R-3 的「Shell 内手势」兜底，风险可控",
+      "why": "呼出的前提是 Shell 不可见，隐藏态下不存在可做手势的 Shell 界面，该降级路径不产生呼出效果，等于没有兜底。"
+    },
+    {
+      "claim": "G-11 的 setContentProtection 能满足 §4「屏幕被录屏/投屏时工作站不出现在画面里」",
+      "why": "setContentProtection 只影响基于窗口句柄的截屏 API（BitBlt/WDA 抓取），OBS 的显示器捕获、采集卡、手机拍屏不受其约束；能满足的只是「防截图工具」，不是「防录屏」。"
+    },
+    {
+      "claim": "G-5 的 lint 规则能保证「插件无法写死颜色」",
+      "why": "拦截单一 hex 写法可被 rgb()/hsl()/oklch()/具名色/Tailwind 色阶类/内联 style 五类写法绕过，断言通过而目标未达成。"
+    },
+    {
+      "claim": "G-8 的「重复启动迁移幂等（版本号不变）」可直接验收",
+      "why": "计划未定义版本号的存放机制（PRAGMA user_version 还是 migrations 表），也没有读取命令，该断言当前无法执行。"
+    },
+    {
+      "claim": "G-12「30 分钟内能 pnpm dev 看到呼出效果」可作为文档完备性的证明",
+      "why": "首次 pnpm install 需下载 Electron 二进制并对 better-sqlite3 做 electron-rebuild 源码编译，M3 已承认这是 ABI 高风险点；30 分钟预算未含网络与编译失败重试，且「新机器」起点未定义，结论不可复现。"
+    }
+  ],
+  "next_action": "REVISE_ARTIFACT"
+}

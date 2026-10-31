@@ -1,0 +1,320 @@
+{
+  "artifact": "PLAN",
+  "artifact_version": "v2.0",
+  "review_round": 2,
+  "reviewer_role": "implementer",
+  "verdict": "FAIL",
+  "blocking": [
+    {
+      "id": "B-01",
+      "clause": "§8 M0（D1）/ G-1 第 25、33 行 / §6 第 289 行 / G-13 第 245 行",
+      "type": "infeasible",
+      "finding": "我明天开工第一步就死在这条：机器上不存在 Node，也没有 pnpm；且 better-sqlite3 的 postinstall electron-rebuild 需要 MSVC 编译器与 Windows SDK，计划全文没有一个字提到 Build Tools。我在 .tools/ 只看到一个 0 字节的 node20.zip，说明连'装 Node'这一步都没成功过。",
+      "evidence": "本机探测：cmd `where node` → 未找到；`pnpm -v` → 未找到；F:\\gal\\workstation\\.tools\\node20.zip Length=0（2026-10-31 0:34）；C:\\Program Files\\Microsoft Visual Studio\\2022\\Community 存在但 VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe 不存在；C:\\Program Files (x86)\\Windows Kits\\10\\Include 不存在；vswhere.exe 不存在。PLAN.md:26 只写 `pnpm install 零 error，postinstall 完成 electron-rebuild`，G-13（:245）环境要求只写 Node 20.x，R-3（:308）只覆盖 NODE_MODULE_VERSION；全文无 MSVC / Visual Studio / Windows SDK / node-gyp 字样（grep 0 命中）。",
+      "required_fix": "在 M0 出口条件里增加三条硬闸：① Node 20.x（zip 版本，重下，PATH 可验证）② VS 2022 Build Tools 工作负载 Microsoft.VisualStudio.Workload.VCTools + VC.Tools.x86.x64 + Windows 11 SDK 10.0.22621 ③ 在 M0 用最小工程跑通 `npx @electron/rebuild -f -w better-sqlite3` 编译（不是等到 D2）。同时给出磁盘预算（约 7GB，本机 C 盘剩 33.3GB）与失败降级（改用 better-sqlite3 prebuilt for Electron 的可行性结论）。",
+      "blocks_what": "M0、M3（G-1）、以及其后全部里程碑；D1 即卡住，D2 的 ABI 冒烟闸直接失败"
+    },
+    {
+      "id": "B-02",
+      "clause": "G-1 第 29 行 `pnpm package` / §7 R-10 / G-13",
+      "type": "infeasible",
+      "finding": "G-1 把 `pnpm package` 出 NSIS 安装包当作 M3 出口条件，但 electron-builder 首次运行要在 GitHub 拉 winCodeSign / nsis / nsis-resources（200MB+），本机没有任何 electron / electron-builder 缓存，也没有配置任何镜像；计划没有 `--dir` 或其他降级路径，也没写离线缓存搬运步骤。我第一次跑 package 就可能在下载环节挂住，而 M3 是全链路闸口。",
+      "evidence": "本机：%LOCALAPPDATA%\\electron\\Cache 不存在；%LOCALAPPDATA%\\electron-builder\\Cache 不存在；curl registry.npmjs.org/pnpm → HTTP 200 但耗时 20.0s（探针 20s 超时边界）；registry.npmmirror.com → 2.9s；github.com/electron/electron/releases → 8.0s。PLAN.md:29 只写'产出 release/ARK-<version>-win-x64.exe（NSIS）'；PLAN.md:315 R-10 只承认 install 慢，未覆盖 package 阶段的二段下载；全文无 ELECTRON_MIRROR / ELECTRON_BUILDER_BINARIES_MIRROR / --dir 字样。",
+      "required_fix": "M3 拆两级闸：闸 A = `electron-builder --dir` 产出 release/win-unpacked 并可启动（不依赖 nsis/winCodeSign 下载成功）；闸 B = NSIS 安装包。同时把镜像配置写进 .npmrc/.env（registry=npmmirror、ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/、ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/），并记录缓存目录可在重装时复用。",
+      "blocks_what": "M3 出口条件（G-1 第 5 条命令）、以及依赖'能出安装包'才成立的 G-13 从零复现"
+    },
+    {
+      "id": "B-03",
+      "clause": "§2 第 17 行 vs 文档结构 G-11..G-13 / §8 M11 第 332 行 / §9 第 343 行",
+      "type": "contradiction",
+      "finding": "范围口径自相矛盾：§2 开头写'S0 承诺 10 条（G-1..G-10）'，但正文有 G-11、G-12、G-13 三个同格式目标，M11 又要求'全部 G-1..G-13 验证通过'，§9 自动验收清单只列到 G-12 并漏掉 G-3 与 G-11。我按哪一份写'已完成'？验收清单是我唯一的完成判据。",
+      "evidence": "PLAN.md:17 'S0 承诺 10 条（G-1..G-10）'；PLAN.md:225 '### G-11'、:236 '### G-12'、:243 '### G-13'；PLAN.md:332 '全部 G-1..G-13 验证通过'；PLAN.md:343 '逐条自动验收：G-1、G-2(a)、G-4、G-5、G-6、G-7、G-8、G-9、G-10、G-12'（缺 G-3、G-11、G-13）。",
+      "required_fix": "统一为 13 条，改 §2 标题为 S0 承诺 13 条；§9 自动/人工两张清单逐条对齐 G-1..G-13，每条标注 [自动]/[人工] 与对应里程碑，作为唯一 DoD 表。",
+      "blocks_what": "所有任务的完成定义（DoD）判定；M11 终审无判据"
+    },
+    {
+      "id": "B-04",
+      "clause": "§8 第 317 行表头'严格串行，无重叠'与表体第 321-332 行",
+      "type": "contradiction",
+      "finding": "表头声明严格串行无重叠，表体自己在同一天放两个里程碑：M0 与 M1 都是 D1，M2(D2-D3) 与 M3(D3-D4) 在 D3 重叠，M7(D8) 与 M8(D8-D9) 重叠，M8(D9) 与 M9(D9) 重叠，M9(D9) 与 M10(D9-D10) 重叠。我按串行排任务卡会与排期表打架，按表又把并行塞进串行链。",
+      "evidence": "PLAN.md:317 '（严格串行，无重叠）'；:321 'M0 ... D1'；:322 'M1 ... D1'；:323 'M2 ... D2-D3'；:324 'M3 ... D3-D4'；:328 'M7 ... D8'；:329 'M8 ... D8-D9'；:330 'M9 ... D9'；:331 'M10 ... D9-D10'。",
+      "required_fix": "改成按依赖 DAG 的里程碑表：每行给'前置里程碑'与'工作日区间'，删掉'严格串行'字样，或把区间改成互斥（D1/D2-D3/D4-D5/...）并合计工作日；允许并行的显式标注 parallel-with。",
+      "blocks_what": "任务排序与 LEDGER 排期基线；任何'是否按期'的判定"
+    },
+    {
+      "id": "B-05",
+      "clause": "G-2(b) 第 50 行、G-6 第 105 行、G-7 第 110-111 行引用 '§11' '§12'；G-9 第 135 行引用 '§13'",
+      "type": "missing",
+      "finding": "四处交叉引用指向不存在的章节。文档到 §10 就结束（369 行，末尾是 P-1/P-2/P-3），没有 §11 两态窗口参数表与 z 序表、没有 §12 权限网关契约与 manifest schema、没有 §13 FTS 章节。ROUND-1 裁决把这些当作'已采纳并写入'，实际正文里一个字都没有。我照 G-7 开工时，manifest 字段名、通道串、senderMap 身份规则、审计字段全是我自己编。",
+      "evidence": "PLAN.md:50 '（§11 给两态窗口参数表）'；:105 '见 §11 z 序表'；:110 '字段见 §12'；:111 '见 §12 全文'；文件总行数 369，最后一行 :369 是 'P-3 呼出后是否透出桌面壁纸…'；grep '§1[123]' 只命中这 4 处引用，无任何章节标题。",
+      "required_fix": "v2.1 补齐三节并给出可复制的规格：§11 隐藏态/呼出态两套 BrowserWindow 参数表（含 bounds 计算、alwaysOnTop、setIgnoreMouseEvents、focusable、z 序与焦点归属）；§12 manifest schema 完整字段 + 通道命名 + senderMap 身份判定 + 每个错误码条件 + 审计字段与轮转规则；§13 已在 G-9 内联 DDL，改为引用并补 buildQuery 的精确 FTS 表达式。",
+      "blocks_what": "G-2(a) 的呼出态断言、G-6 层叠、G-7 全部实现；M3/M6/M7 的任务卡写不出来"
+    },
+    {
+      "id": "B-06",
+      "clause": "G-2(a) 第 46 行 `alwaysOnTop: false` vs G-4 第 71 行'全屏覆盖层' + 第 74 行'失焦收起默认关闭'",
+      "type": "contradiction",
+      "finding": "三处条款互斥：窗口构造参数钉死 alwaysOnTop:false，G-4 要求呼出后按 workArea 全屏且盖住其他窗口，失焦收起又默认关闭。结果是：用户点一下别的窗口，覆盖层既不置顶也不收起，留在屏幕上但被压在下面；键盘焦点在别人窗口，G-6 的 before-input-event 也收不到 Ctrl+K。'隐形开关唤出的完整工作环境'这个 S0 核心体验在这一种状态下就废了。",
+      "evidence": "PLAN.md:46 '\"alwaysOnTop\": false'；:71 '呼出：按光标所在屏 workArea 全屏'；:74 '失焦收起默认关闭，可在设置页开启，开启后延迟 3000ms'；G-6 :97 '仅在窗口可见时吞掉 Ctrl+K'（window 可见 ≠ 有焦点）。计划未定义任何'呼出态 setAlwaysOnTop(true)/收起时还原'的路径，§11 又缺失。",
+      "required_fix": "§11 明确两态：隐藏态按 G-2 快照（alwaysOnTop:false）；呼出态 setAlwaysOnTop(true,'screen-saver') 或 'floating' + setBounds(workArea) + focus()，收起时回落为 false。同步改写 G-2(a) 为'隐藏态参数快照'并新增'呼出态参数快照'两条断言；G-4 补一条断言：呼出后在另一个窗口标题栏位置点击，覆盖层仍在最前（isAlwaysOnTop()===true）。",
+      "blocks_what": "M4 窗口层；G-2(a)、G-4 全部验收；G-6 的可见性前提"
+    },
+    {
+      "id": "B-07",
+      "clause": "G-4 第 72 行动效预算定义",
+      "type": "untestable",
+      "finding": "这条断言在物理上量不出真实值，写出来必然假阳性：t0 用主进程 Date.now()（纪元毫秒，约 1.75e12），t1 用 renderer 的 performance.now()（相对 timeOrigin，通常 0~1e5），两个时钟原点不同。t1-t0 恒为约 -1.75e12，永远 ≤ 320ms，5 次全'通过'，测的是减法而不是动效。",
+      "evidence": "PLAN.md:72 't0 = 主进程调用 win.show() 的 Date.now()；t1 = renderer 在 framer-motion onAnimationComplete 回调里回传 performance.now()。断言连续 5 次 (t1-t0) ≤ 320ms'。计划未提 performance.timeOrigin、未提主进程把 t0 随 IPC 下发、未提用同一时钟。",
+      "required_fix": "二选一并写死：① t1 = performance.timeOrigin + performance.now()（同为纪元毫秒）；② 主进程 show() 前通过 IPC 下发 t0=performance.timeOrigin+performance.now() 的值，renderer 只做差值。补第 6 次采样做 sanity：断言 0 < (t1-t0) < 2000，防止再次出现量纲错。",
+      "blocks_what": "G-4 自动验收；M4 出口"
+    },
+    {
+      "id": "B-08",
+      "clause": "G-6 第 97 行'主进程 webContents.on(before-input-event)' + G-7 第 109 行 WebContentsView",
+      "type": "missing",
+      "finding": "捕获点只写了一个 webContents，没说是 Shell 的还是每个插件 view 的。真实运行里焦点在插件的 WebContentsView 上（笔记编辑中），Ctrl+K 的 before-input-event 报给插件那个 webContents，Shell 的监听器根本收不到 → 用户正在编辑器里按 Ctrl+K，命令面板不弹。G-4 的 e2e（呼出→Ctrl+K→开笔记）只覆盖 Shell 首次获得焦点那一次，正好把这个洞绕过去。",
+      "evidence": "PLAN.md:97 '主进程 webContents.on(before-input-event)，仅在窗口可见时吞掉 Ctrl+K'；PLAN.md:109 '每插件一个 WebContentsView'；PLAN.md:78 e2e 顺序为'呼出 → Ctrl+K → 打开笔记'（Ctrl+K 发生在笔记 view 存在之前与之后各一次，但只断言了前一次）。全文未出现 getAllWebContents / did-attach / view.webContents.on。",
+      "required_fix": "G-6 写明：网关在插件 view 创建时统一对其 webContents 挂 before-input-event（实现方式二选一：每 view 挂一个转发器，或对 webContents.getAllWebContents() 逐个挂并在 created/destroyed 事件维护），命中 Ctrl+K 时由主进程统一 state 机判定是否吞键；补 e2e：笔记 view 聚焦并输入时按 Ctrl+K，断言命令面板打开且编辑器内容未插入 'k'。",
+      "blocks_what": "M7 命令面板；G-6 的 e2e 与真实可用性"
+    },
+    {
+      "id": "B-09",
+      "clause": "G-12 第 239 行 '主进程 session.webRequest.onBeforeRequest' vs G-7 第 109 行 'partition: persist:plugin-<id>'",
+      "type": "security",
+      "finding": "白名单挂错了 session。G-7 规定每个插件用独立 partition，插件的 renderer 跑在自己的 StoragePartition/Session 上；G-12 只在'主进程 session'（默认 defaultSession）装 onBeforeRequest，插件请求不经过它。结论：隐私约束'S0 唯一出网路径是主进程 AI 调用'在插件这一侧没有实际执行点，插件可以直连任意域名。",
+      "evidence": "PLAN.md:109 '且独立 partition: persist:plugin-<id>'；PLAN.md:239 '主进程 session.webRequest.onBeforeRequest 域名白名单'；全文未出现 session.fromPartition、未出现对每个 partition 安装 handler 的要求。另：G-12 :241 的 fixture 断言只证明'某次 fetch 被拒'，不区分是被 CSP 还是被 webRequest 拒。",
+      "required_fix": "G-12 改为'对 defaultSession 与每个插件 partition 各装一份 onBeforeRequest（在 view 创建前 fromPartition 并 installGate）'；验收拆成两条可区分断言：①CSP 生效（renderer 侧 console 出现 CSP 违规且 webRequest 未被调用，断言审计无 E-NET-001）②CSP 被绕过时（如插件自建 form/img 请求）webRequest 命中并写 E-NET-001。",
+      "blocks_what": "G-12 全部验收与 M6 出口；隐私约束这条 S0 约束本身"
+    },
+    {
+      "id": "B-10",
+      "clause": "G-12 第 238 行 CSP `connect-src 'self'` vs 第 241 行 e2e 断言 `E-NET-001`",
+      "type": "contradiction",
+      "finding": "两道防线互相短路，验收用例在正常实现下永远失败：插件里 `fetch('https://example.com')` 会先被 CSP connect-src 'self' 拦在渲染进程，网络请求根本不发出，主进程 onBeforeRequest 不被调用，审计里不会有 E-NET-001。要么 CSP 断言的因，要么 E-NET-001 是果，二者不能同时成立。另外'用户配置 AI 端点后加入白名单'没有持久化字段、没有运行时更新入口、没有校验（是否允许 http、是否允许重定向跳域），我不知道配置完了怎么生效。",
+      "evidence": "PLAN.md:238 'connect-src 'self'... AI 请求走主进程，不经 renderer，所以 renderer 的 connect-src 可以不放开'；PLAN.md:241 'fetch('https://example.com') 必须 reject，且审计日志出现 E-NET-001'；PLAN.md:239 '用户配置 AI 端点后加入白名单（如 https://api.deepseek.com）'，全文无白名单存储位置、无 IPC 名、无生效时机、无重定向处理。",
+      "required_fix": "验收改成两段可区分：①CSP 段：断言 fetch 抛 TypeError 且控制台有 CSP 违规、审计无 E-NET-001（证明 CSP 是主防线）；②webRequest 段：用不触发 CSP 的出口（如主进程发起的请求、或临时关闭 CSP 的 fixture main-world 请求）断言被 cancel 且写 E-NET-001。白名单补规格：存 ark.db 的 settings 表、`net:setAllowlist` IPC、写入后下一次请求生效（无需重启）、校验只允许 https + 精确 host（含端口）、重定向目标需再次过闸。",
+      "blocks_what": "G-12 的 e2e（M6 出口）；自定义 AI 端点的可用性"
+    },
+    {
+      "id": "B-11",
+      "clause": "G-9 第 178-183 行 buildQuery + 第 189-203 行固定验收语料",
+      "type": "ambiguous",
+      "finding": "检索规格缺两样东西，我写出的 SQL 一定和期望表对不上：①布尔结构没给——'对 toBigram(q) 的各 2-gram 用 AND 拼接，同时查 title 与 body'，到底是 `bigram_title:a b OR bigram_body:a b`（FTS5 里空格就是 AND，这条实际是 (t:a AND t:b) OR (b:a AND b:b)，多词即错）还是 `(t:a OR b:a) AND (t:b OR b:b)`；②语料表只有'正文'列，没有 title，而查询模板是 `bigram_title:tok*`，N1/N2/N3 的标题未定义，`工作` 期望命中 [N2,N1] 到底由 body 还是 title 产生，核对不了。",
+      "evidence": "PLAN.md:178-183 buildQuery 伪码（CJK≥2 只写'AND 拼接，同时查 title 与 body'）；PLAN.md:189-193 表头为 '| 笔记 | 正文 |'，N1=工作台、N2=工作站架构、N3=无关内容，无 title 列；PLAN.md:197 期望 '工作 → [N2, N1]'。",
+      "required_fix": "①给出精确表达式模板：`(bigram_title:({g1}) OR bigram_body:({g1})) AND (bigram_title:({g2}) OR bigram_body:({g2}))`；②语料表补 title 列并写死内容（建议 N1.title='工作台'、N2.title='工作站架构'、N3.title='无关内容'），同时补两条防混淆用例：title 命中而 body 不命中的查询、以及 title/body 交叉命中；③写明 FTS5 查询串里 2-gram 的转义规则（空格、双引号）。",
+      "blocks_what": "G-9 检索实现与其 6 条期望断言；M8"
+    },
+    {
+      "id": "B-12",
+      "clause": "G-9 第 155-168 行触发器 + 第 133 行'自动保存（debounce 800ms）'",
+      "type": "data-loss",
+      "finding": "写路径没定，而它决定 FTS 索引是否被污染。笔记自动保存若用 `INSERT OR REPLACE INTO notes`（最常见的偷懒写法），REPLACE 的删除阶段默认不触发 DELETE 触发器（recursive_triggers 默认 OFF），外部内容表 notes_fts 里旧行不会被 'delete' 掉 → 检索返回已删除的旧词、命中数与行数背离，且这种脏数据只在用户改了正文之后才出现，很难复现。计划只给了触发器，没给写入语句，也没有 PRAGMA。",
+      "evidence": "PLAN.md:133 '自动保存（debounce 800ms，且收起前强制 flush）'；PLAN.md:139-146 notes 表定义为 id INTEGER PRIMARY KEY；PLAN.md:159-168 三个 trigger；全文无 UPSERT / INSERT OR REPLACE / recursive_triggers / 'rebuild' 字样。",
+      "required_fix": "在 G-9 写死写入路径：`INSERT INTO notes(...) VALUES(...) ON CONFLICT(id) DO UPDATE SET ...`，并用单测证明 UPDATE 触发器生效（改词后旧词查询命中 0）；补 `PRAGMA recursive_triggers` 的显式取值与在连接打开时的设置；补一条 integrity 自检：迁移后与每次启动跑 `INSERT INTO notes_fts(notes_fts) VALUES('integrity-check')`（失败则 'rebuild'）。",
+      "blocks_what": "G-9 的检索正确性断言、以及后续所有基于笔记内容的验收"
+    },
+    {
+      "id": "B-13",
+      "clause": "G-10 第 208 行 safeStorage + 第 210-218 行错误码表 + 第 223 行跨用户用例",
+      "type": "missing",
+      "finding": "两个洞：①`isEncryptionAvailable()` 返回 false 时怎么办——错误码表 E-AI-001..006 里没有一个对应，计划也没说是否降级为'仅内存保存、重启后需重填'，这条分支我自己编就是隐私决策；②没写调用时机，safeStorage 在 app ready 之前调用会抛异常，而我最早在读取配置的模块初始化里就会用；③跨用户解密用例需要人工登录另一个 Windows 账户，却挂在'[自动]'目标下，CI 里跑不了。",
+      "evidence": "PLAN.md:208 '主进程 safeStorage.isEncryptionAvailable() → safeStorage.encryptString(key) → 写 data/secrets/ai.bin'；PLAN.md:210-218 错误码只有 E-AI-001 未配置 / 002 解密失败 / 003 401 / 004 429 / 005 不可达 / 006 超时；PLAN.md:223 '把 ai.bin 拷到另一 Windows 用户下解密 → 期望 E-AI-002'，而 G-10 标题为 '[自动]'。",
+      "required_fix": "补 E-AI-007（加密不可用：不落盘，Key 仅驻内存，UI 提示'本次会话有效'）并写进错误码表；写明 safeStorage 只在 app.whenReady() 之后调用、初始化顺序；把跨机/跨用户用例标为 [人工] 并给出替代自动断言（mock safeStorage.decryptString 抛错 → 断言映射到 E-AI-002 且 Shell 不崩）。",
+      "blocks_what": "G-10 实现与验收；M9"
+    },
+    {
+      "id": "B-14",
+      "clause": "G-8 第 121-125 行数据根解析顺序",
+      "type": "data-loss",
+      "finding": "解析顺序在开发模式下指向 node_modules：规则 2（exe 同级 data）优先于规则 3（app.getAppPath()/data）。dev 时 process.execPath 是 node_modules/electron/dist/electron.exe，于是 data/ 被建到 node_modules/electron/dist/data 里；pnpm 重装/清 store 就整体蒸发，笔记全丢。计划没有按 app.isPackaged 分流，也没说 dev 下 ARK_DATA_DIR 是否强制。",
+      "evidence": "PLAN.md:121-125 '数据根解析顺序：1 process.env.ARK_DATA_DIR 2 path.join(path.dirname(app.getPath('exe')),'data')（便携模式）3 path.join(app.getAppPath(),'data')（开发模式）'；§5 :280 '本次机器 ARK_DATA_DIR=F:\\gal\\workstation\\data（写在 .env）'；全文无 app.isPackaged。",
+      "required_fix": "改为：`ARK_DATA_DIR` → (app.isPackaged ? exe同级/data : app.getAppPath()/data)，并加启动断言日志打印实际生效根目录；补单测：ARK_DATA_DIR 未设时 dev 解析到仓库根、打包后解析到 exe 同级；再补一条：解析出的路径不存在则创建，创建失败直接报错退出（不静默回落到仓库）。",
+      "blocks_what": "G-8 数据层、M5、以及'换电脑整个搬走'场景的成立"
+    },
+    {
+      "id": "B-15",
+      "clause": "§5 第 280 行 + G-8 第 125 行 '.env 写 ARK_DATA_DIR' 与 G-1 第 36 行依赖白名单",
+      "type": "missing",
+      "finding": ".env 是计划里唯一指定 ARK_DATA_DIR 的载体，但工程里没有任何东西会去读 .env：Electron 主进程不自动加载 .env，而 12 个白名单依赖里没有 dotenv，也没有'手写 10 行解析器'的约定。我照做要么加依赖（违反 G-1 并触发 ADR），要么自己造一个没被验收的解析器。",
+      "evidence": "PLAN.md:280 '本次机器 ARK_DATA_DIR=F:\\gal\\workstation\\data（写在 .env，不写进源码）'；PLAN.md:36 白名单恰好 12 个（electron, react, react-dom, better-sqlite3, zustand, framer-motion, @tanstack/react-virtual, monaco-editor, marked, dompurify, zod, electron-updater），无 dotenv；全文无 'loadEnv' / 解析器说明。另：ROUND-1 裁决 :11 声称 '附录 A 给完整 package.json 依赖白名单'，PLAN.md 无附录 A。",
+      "required_fix": "二选一写进 PLAN：①允许 dotenv 作为 devDependency 并用 electron-vite define/`loadEnv` 注入 ARK_DATA_DIR；②主进程自写 15 行 .env 解析（仅 KEY=VALUE，忽略注释），并给出单测。同时把'附录 A package.json 全量清单'真正补上，或删掉 ROUND-1 中对它的引用。",
+      "blocks_what": "M0 之后的所有启动（数据根取不到 → 直接退到 exe 同级目录，与 §5 的指定路径不符）"
+    },
+    {
+      "id": "B-16",
+      "clause": "§3 N-12 第 263 行反向断言 vs G-12 第 240 行 clipboard-read",
+      "type": "contradiction",
+      "finding": "这条 grep 断言把自己钉死了：N-12 要求 `Select-String -Path src/**/*.ts*,plugins/**/manifest.json -Pattern 'terminal|xterm|node-pty|filesearch|screenshot|ocr|canvas|clipboard'` 命中 0，而 G-12 明确要求 `setPermissionRequestHandler` 保留 clipboard-read 权限。两条款同时满足在同一个仓库里不成立，我无论怎么写代码都会红。",
+      "evidence": "PLAN.md:263 断言列表含 'clipboard'，期望 0 命中；PLAN.md:240 'setPermissionRequestHandler 全部拒绝（除 clipboard-read 视需要）'。另：'canvas' 会命中 monaco-editor 的类型引用与任何 `HTMLCanvasElement` 用法，'screenshot' 会命中防截屏相关注释。",
+      "required_fix": "把 N-12 断言改成命中'能力'而不是命中'单词'：以 package.json dependencies 白名单 + 命令注册表 + plugins/ 目录名单三项为断言对象；或把 pattern 收紧为 `node-pty|xterm|desktopCapturer|clipboard[.]readText|screen[.]capture`，并在断言脚本里显式排除注释行与 .d.ts。",
+      "blocks_what": "G-1/lint 之外的 N-12 反向验收（M11 终审必红）"
+    },
+    {
+      "id": "B-17",
+      "clause": "G-12 第 238 行 CSP 表 vs G-9 第 133 行 Monaco 编辑器",
+      "type": "contradiction",
+      "finding": "CSP 里没有 worker-src，也没有 font-src。Monaco 在 Electron/Vite 下靠 blob: worker 跑语法高亮与补全；`default-src 'self'` 会把它掐掉，加上 `script-src 'self'` 也不允许 blob。结果：G-12 通过，笔记编辑器的智能补全/worker 起不来；G-9 通过，G-12 又不成立。计划两处各写各的，没做交叉检查。",
+      "evidence": "PLAN.md:238 'default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self''（无 worker-src / font-src / blob:）；PLAN.md:133 'Markdown 编辑（Monaco）'；§6 :298 Monaco 0.52.x。",
+      "required_fix": "G-12 CSP 增补：`worker-src 'self' blob:; font-src 'self' data:;`（或改用 monaco worker 走 file:// 打包路径并在 CSP 里显式列出）；补一条 e2e：打开笔记 → 编辑器内 Ctrl+Space 出现补全 → 控制台无 CSP 违规。",
+      "blocks_what": "G-9 与 G-12 同时通过；M8"
+    },
+    {
+      "id": "B-18",
+      "clause": "§8 M6 第 327 行 'G-7、G-12 全绿 D6-D8' + §5 第 283 行 8~10 日",
+      "type": "infeasible",
+      "finding": "D3-D10 共 8 个工作日要装 M3..M11 九个里程碑；M6 单项 3 天要交付：插件宿主（WebContentsView + 独立 partition + view 生命周期 + 崩溃恢复卡片）、manifest zod schema 与 3 个 fixture、权限网关（senderMap 身份 + glob 判定 + 审计 + 10MB 轮转保留 5 份）、G-12（CSP 全窗口 + 每个 partition 的 webRequest 白名单 + 审计码 + 自定义端点动态白名单）。而这套契约的正文（§12）还不存在，要在 M2 的两天里连写 7 个模块的接口+错误路径+验收用例。以上任一项超出 3 天，后面 M7/M8/M9/M10 没有缓冲日。",
+      "evidence": "PLAN.md:323-332 里程碑表（M2 D2-D3、M3 D3-D4 … M11 D10）；PLAN.md:327 'M6 … G-7、G-12 全绿 … D6-D8'；PLAN.md:283 'S0 8~10 个工作日'；PLAN.md:110-116 G-7 的验收含 3 个 fixture + 杀渲染进程的崩溃隔离 e2e + 审计轮转；§12 缺失（见 B-05）。同类工作量参考：本机实测 npm 官方 registry 单次探测即 20s 超时，任何'重装依赖'类返工都会吞掉半天。",
+      "required_fix": "把 M6 拆成 M6a（宿主 + manifest + 崩溃隔离，2 天）与 M6b（权限网关 + 审计，2 天），G-12 独立成 M6c（1 天，含 CSP 与 Monaco 联调），总工期改为 12~14 个工作日并把 D11/D12 写进表；或在范围上砍掉 G-12 的'自定义端点动态白名单'（S0 只允许内置 DeepSeek 端点，白名单静态）。",
+      "blocks_what": "整份排期的可信度；M6 及其后续所有里程碑"
+    }
+  ],
+  "nonblocking": [
+    {
+      "id": "N-01",
+      "clause": "§7 R-6 第 311 行 vs G-3 第 64 行",
+      "finding": "R-6 仍写 '220ms 轮询热区带来常驻 CPU 占用'，而 G-3 已改为 setInterval(50ms)。风险表没跟 C-12 的修复同步，读表的人会按 220ms 估算 CPU。",
+      "suggestion": "R-6 改为 50ms，并补实测口径：热区开启时 60s 空闲 CPU 占比 <1%（用 process.getCPUUsage() 采样）。"
+    },
+    {
+      "id": "N-02",
+      "clause": "G-5 第 89 行 ARK-COLOR-3 '140 个 CSS 具名色'",
+      "finding": "CSS Color 4 的具名色是 148 个（含 rebeccapurple），另有 transparent / currentColor 两个关键字不属于色名。按 140 写 allowlist 会漏 8 个色（含 rebeccapurple、tomato 之后的若干项），且没有规定把 transparent/currentColor 排除，也没有规定生成文件 tokens.css 不在 lint 作用域内。",
+      "suggestion": "改为 148 并直接引 color-name 包的数据文件（devDependency）做反查；显式白名单 {'transparent','currentColor','inherit'}；lint ignore 里加 src/renderer/styles/tokens.css 与 out/。"
+    },
+    {
+      "id": "N-03",
+      "clause": "G-1 第 36 行 '恰好 12 个' 与 'count-deps.mjs ≤ 20'；§5 第 281 行 '核心依赖 ≤ 20'",
+      "finding": "三个上限口径并存（12 / 20 / 20），且 devDependencies 完全不计、无白名单。Tailwind 3、Vite 5、electron-vite、electron-builder、Playwright、@electron/rebuild、postcss、autoprefixer 都在 devDeps 侧无限扩张——'新增依赖需 ADR'这条规矩在 devDeps 上等于没有。",
+      "suggestion": "统一为：dependencies 严格等于 12 个清单（脚本断言集合相等，不是计数）；devDependencies 给显式白名单（约 14 个）并同样断言；count-deps.mjs 输出两行 dependencies/devDependencies 计数并各自比对清单。"
+    },
+    {
+      "id": "N-04",
+      "clause": "G-7 第 116 行审计日志",
+      "finding": "文件名按天 audit-YYYYMMDD.ndjson，又要求'按 10MB 轮转保留 5 份'——同一天写满 10MB 时新文件的命名规则未定义，'保留 5 份'是按天还是按片也没说。",
+      "suggestion": "定为 audit-YYYYMMDD.N.ndjson（N 从 0 递增），保留策略=全局最新 5 个文件；或改成单文件 audit.ndjson + 大小轮转到 audit.1..5。"
+    },
+    {
+      "id": "N-05",
+      "clause": "G-8 第 120 行 ATTACH 方案",
+      "finding": "每插件一个 db 文件靠 ATTACH 使用，但 SQLite 的 SQLITE_MAX_ATTACHED 默认 10；插件数到 10 以上就 ATTACH 失败，计划未设插件数上限也未定义连接策略。",
+      "suggestion": "写明 S0 插件数上限（如 ≤8），或改为'按需 ATTACH / DETACH 的短连接池'并在错误码表加 E-DB-0xx。"
+    },
+    {
+      "id": "N-06",
+      "clause": "G-8 第 126 行 '不产生第二个 WAL 写入者'",
+      "finding": "这条断言没有观测手段：第二个进程在拿到锁失败后立刻 quit，无法从外部观察它是否写过 WAL。",
+      "suggestion": "改成可观测断言：第二次启动退出码 0 且 stdout 含 'SECOND_INSTANCE_FOCUS'；第一次实例的日志里 second-instance 事件计数 +1；比较启动前后 -wal 文件 mtime 不变。"
+    },
+    {
+      "id": "N-07",
+      "clause": "G-2(a) 第 42-47 行'构造参数快照完全等于'",
+      "finding": "没规定快照的采集方式。Electron 不提供读回 frame / transparent / hasShadow 的 API，唯一可行是 spy 构造函数入参（jest.mock('electron') 的 BrowserWindow）或导出一个纯函数 buildWindowOptions()。这决定了单测形态，实施者会做出两种不可比的实现。",
+      "suggestion": "G-2(a) 写死：窗口参数由纯函数 buildWindowOptions(state) 生成，单测断言该函数返回值 deep equal 快照；集成层只断言 isVisible()/isSkipTaskbar()。"
+    },
+    {
+      "id": "N-08",
+      "clause": "G-1 第 36 行 electron-updater 在白名单",
+      "finding": "S0 目标里没有任何更新相关条款（N-8 只排除了开机自启），electron-updater 是白名单里唯一无验收、无 publish 配置、无签名前提的依赖。",
+      "suggestion": "S0 移除 electron-updater，把名额留给 dotenv（见 B-15）；或在 G-1 之外新增 G-14 自动更新目标并说明签名方案。"
+    },
+    {
+      "id": "N-09",
+      "clause": "G-7 第 109 行'独立 partition 强制独立 renderer 进程'",
+      "finding": "不同 partition 只保证不同 StoragePartition，进程归属由 Chromium 的进程模型决定，这句因果是过度断言。好在 G-7 第 115 行的崩溃隔离用例天然能验证它。",
+      "suggestion": "改为'以 getOSProcessId 断言两个插件的 OS 进程 pid 不同'，把因果降级为可测事实。"
+    },
+    {
+      "id": "N-10",
+      "clause": "§4 第 271 行 '1000 篇内 P95 < 50ms' vs G-9 验收",
+      "finding": "场景表给了检索性能阈值，G-9 的验收集里没有任何性能断言，这条诉求没有落点。",
+      "suggestion": "G-9 增加：批量插入 1000 篇（toBigram 生成的固定语料）后，100 次查询 P95 < 50ms；并记录 db 体积。"
+    },
+    {
+      "id": "N-11",
+      "clause": "G-11 第 233 行演示模式 destroy",
+      "finding": "私密插件 view 在演示模式开启时被 destroy，关闭演示模式后如何恢复未定义（重建时机、状态、未保存内容）。destroy 前是否 flush 也没写。",
+      "suggestion": "写明：进入演示模式 → flushAll() → destroy；退出演示模式 → 重新创建 view 并从 db 重载；补一条 e2e 断言退出后命令面板重新出现且笔记内容与进入前一致。"
+    },
+    {
+      "id": "N-12",
+      "clause": "G-3 第 66 行'检测到前台全屏应用……自动禁用'",
+      "finding": "Windows 上判断'前台应用全屏'没有现成 Electron API，计划没给实现手段（Win32 GetForegroundWindow + 显示器边界比较，或全局 fullscreen 事件近似）。",
+      "suggestion": "定为近似实现：比较当前前台窗口矩形与 display.bounds（通过可选依赖或 powershell helper），并在 README 已知局限里声明'全屏检测为近似'；S0 允许用'ARK 自身将被呼出时不做检测'的简化版。"
+    }
+  ],
+  "questions_for_owner": [
+    {
+      "id": "Q-01",
+      "question": "§11 两态窗口参数表、§12 权限网关契约、§13 检索章节是否随 v2.1 补进 PLAN，还是要我等 SDS 再写？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-02",
+      "question": "呼出态是否允许 setAlwaysOnTop(true)（与隐藏态 alwaysOnTop:false 共存）？若坚持 false，请你给一条'覆盖层在被别的窗口点击后仍然置顶'的替代实现。",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-03",
+      "question": "是否允许在 M0 安装 VS 2022 Build Tools（VC.Tools.x86.x64 + Windows 11 SDK，约 7GB，C 盘余 33.3GB）？若不许，better-sqlite3 是否改走预编译 ABI 方案——请指定版本与来源。",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-04",
+      "question": "开发模式的数据根是否就固定在 F:\\gal\\workstation\\data（即 ARK_DATA_DIR 必填、缺省即报错），还是允许我按 app.isPackaged 分流？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-05",
+      "question": "G-10 的'拷到另一 Windows 用户解密'与 G-11 的'手机拍屏'是否同意降级为 [人工] 清单，自动侧只保留 mock 断言？",
+      "why_blocking": false
+    }
+  ],
+  "rejected_claims": [
+    {
+      "claim": "ROUND-1 裁决称 30 条 blocking 全数采纳，v2.0 已修（合并为 24 项）。",
+      "why": "只有 C-09（asarUnpack）、C-11（手势移出 S0）、C-16（Playwright 热键口径）、C-20（ui.private）、C-21（lint 入门禁）这 5 条在正文里真正闭死。C-01 引用的'附录 A package.json 全量清单'不存在；C-02/C-03/C-05 引用的 §11 两态参数表与 z 序表不存在；C-06 引用的 §12 网关契约全文不存在；C-08 引用的 §13 只把 DDL 内联进 G-9 而查询布尔结构仍缺。"
+    },
+    {
+      "claim": "G-9 的 FTS5 'delete' 触发器语法写错了。",
+      "why": "语法是正确的：SQLite 官方 external content 表用法就是 `INSERT INTO notes_fts(notes_fts, rowid, col...) VALUES('delete', old.id, old.col...)`，UPDATE 时先 delete 再 insert 也是官方推荐写法。真正的问题在写路径（INSERT OR REPLACE 不触发 DELETE 触发器，recursive_triggers 默认 OFF）与查询布尔结构，见 B-12/B-11。"
+    },
+    {
+      "claim": "Tailwind 不在 12 个依赖白名单里 = 白名单遗漏。",
+      "why": "字面不成立：G-1 明说 devDependencies 不计，Tailwind 3 是 devDependency。真实缺口是 devDeps 既无白名单也无上限（N-03），以及 ARK-COLOR-4 要求的 tailwind.config 颜色映射到 var(--ark-*) 这件事全文没写——那才是 Tailwind 与 token 体系真正的接缝。"
+    },
+    {
+      "claim": "transparent/frame/alwaysOnTop 只是调参问题，改改数值就行。",
+      "why": "不是调参。缺的是呼出态参数整张表（§11），叠加 G-4 失焦收起默认关，构成三方冲突（B-06）。另外 transparent 窗口在 Windows 上对 setBounds/多屏 DPI 有已知限制，计划在 G-3/G-4 里对 workArea 全屏只字未提降级（缩到 cursor 所在屏 bounds 但不透明）。"
+    },
+    {
+      "claim": "Windows 上用户没登录时 safeStorage.isEncryptionAvailable() 会返回 false，Key 会丢。",
+      "why": "Windows 后端是 DPAPI（CryptProtectData，绑当前用户），正常登录会话下恒为 true；真实风险是 app ready 之前调用抛错，以及 false 分支与错误码缺失（B-13），不是'未登录即 false'。"
+    },
+    {
+      "claim": "M6 用 3 天做完插件宿主 + 网关 + 网络白名单，够。",
+      "why": "不够。这 3 天要覆盖 host 生命周期、manifest schema、3 个 fixture、权限判定与审计轮转、崩溃隔离 e2e、CSP（含 Monaco worker 冲突，B-17）、每个 partition 的白名单安装（B-09）。而它的输入契约 §12 本身还没写，得先在 M2 的两天里产出。按同类项目经验，这一块单独 5~6 天。"
+    },
+    {
+      "claim": "G-13 从零复现'不设上限只记录'，所以工期风险已消除。",
+      "why": "记录耗时不等于消除风险，它只是把风险挪到验收日暴露。真正的工期风险在 D1 就是硬阻塞（B-01：无 Node、无 cl.exe、无 Windows SDK），以及在 package 阶段（B-02）。这两处没有降级路径，'只记录'记录的是一个失败。"
+    },
+    {
+      "claim": "两次独立防线的说法是可靠的（CSP + webRequest 白名单）。",
+      "why": "在本设计里它们不是独立防线，是串联短路：CSP 先拦，webRequest 永远看不到插件请求（B-10），而 webRequest 又挂在错的 session 上（B-09）。当前状态是'两条都不生效 + 一条错误的验收用例'。"
+    }
+  ],
+  "first_task_proposal": "T-001 环境与工具链闸口（M0 唯一出口，约 1 天，含下载等待）：1) 重新下载 Node 20.x Windows x64 zip（当前 .tools/node20.zip 为 0 字节，判定为坏文件），解压到 F:\\gal\\workstation\\.tools\\node20，验证 node -v = v20.x、npm -v；2) 用 corepack prepare pnpm@9.x --activate，验证 pnpm -v = 9.x；3) 安装 VS 2022 Build Tools 工作负载 VCTools + VC.Tools.x86.x64 + Windows 11 SDK 10.0.22621（约 7GB，C 盘余 33.3GB），验证 cl.exe 路径存在；4) 写 .npmrc：registry=https://registry.npmmirror.com、electron_mirror=https://npmmirror.com/mirrors/electron/、electron_builder_binaries_mirror=https://npmmirror.com/mirrors/electron-builder-binaries/、engine-strict=true；5) 建一个 10 行最小工程（electron 33 + better-sqlite3 11）跑 `npx @electron/rebuild -f -w better-sqlite3`，在 Electron 33 下 `require('better-sqlite3')` 打开内存库并打印 PRAGMA journal_mode。ACCEPT：五条命令逐条贴实际输出尾部；任何一条失败则 T-001 不 DONE，且不启动 T-002。此卡不含任何业务代码。",
+  "task_breakdown_draft": [
+    "T-001 环境与工具链闸口：Node20+pnpm9+VS BuildTools+Windows SDK+镜像 .npmrc+better-sqlite3 electron-rebuild 冒烟。TOUCH: [.tools/, .npmrc, package.json(最小)]。ACCEPT: node -v=v20.x / pnpm -v=9.x / cl.exe 存在 / electron33 下 better-sqlite3 可 require 并打印 wal。",
+    "T-002 仓库骨架与 G-1 基线：package.json（deps 恰 12）、tsconfig、eslint、electron-vite 三入口、scripts/count-deps.mjs、scripts/gen-tokens.mjs 空壳、.env 加载；产出 out/main out/preload out/renderer。ACCEPT: pnpm typecheck/lint/build 三条退出码 0；count-deps 两行计数与清单集合相等。",
+    "T-003 窗口两态（依赖 §11，当前拆不出来）：buildWindowOptions(state) 纯函数 + G-2(a) 隐藏态快照 + 呼出态参数（bounds/alwaysOnTop/focusable/ignoreMouseEvents）+ G-4 动效预算（时钟修正版）。ACCEPT: 两条参数快照 deep equal；t1-t0 用同一 timeOrigin。",
+    "T-004 主题引擎 G-5：tokens.ts、gen-tokens 生成 tokens.css、主题切换 IPC theme:changed、5 类颜色 lint 规则 + plugins/fixtures/hardcoded-color 5 个负例。ACCEPT: lint 对该目录恰好 5 条、码分别为 ARK-COLOR-1..5；tokens.css 与生成文件在 lint ignore 内。",
+    "T-005 数据层 G-8：ARK_DATA_DIR→(isPackaged?exe同级:appPath)/data、单实例锁、migrate(user_version)、ark.db+plugins/<id>.db ATTACH、WAL 自检、备份清单。ACCEPT: 三次启动 user_version 不变；第二次启动退出码 0 且 first-instance 事件 +1；启动日志 journal_mode=wal。",
+    "T-006 插件宿主与网关 G-7（依赖 §12，当前拆不出来）：WebContentsView + persist:plugin-<id>、zod manifest、plugin:<id>:<api> 通道 + senderMap、glob 权限判定、审计 ndjson 轮转、3 个 fixture（evil-fixture / no-perm / net-escape）、崩溃隔离 e2e。ACCEPT: 三条 fixture 断言 + 杀渲染进程后 3s 内 Shell 可用 + 审计 decision:deny。",
+    "T-007 网络出口 G-12：每 session（default + 每个 plugin partition）装 onBeforeRequest、白名单存 settings 表 + net:setAllowlist IPC 热生效、E-NET-001 审计、CSP 头（含 worker-src blob:）。ACCEPT: CSP 段与 webRequest 段分开断言（见 B-10）；笔记编辑器补全可用且无 CSP 违规。",
+    "T-008 命令面板 G-6：before-input-event 对 Shell + 每个插件 view 统一挂载、fzf 评分四权重 + command_usage、P95<16ms、层叠 setVisible(false)/恢复焦点。ACCEPT: 1000 条注入数据 P95<16ms；首项 id==='notes.new'；笔记 view 聚焦时 Ctrl+K 仍能开面板且不插入字符。",
+    "T-009 笔记插件 G-9（依赖 title 语料，当前拆不出来）：Monaco 编辑器、debounce 800ms 自动保存（UPSERT）、toBigram、buildQuery（精确括号结构）、5 个触发器、6 条期望命中、双链与反链、高亮 indexOf。ACCEPT: 6 条查询期望逐条通过；改词后旧词命中 0；三篇环形链接每篇反链 1 条。",
+    "T-010 AI 门面 + 热键热区 + 隐匿三件套 + 文档（明显超载，建议拆成 T-010..T-013）：safeStorage（ready 后、false→E-AI-007）、6+1 错误码 mock、Ctrl+Alt+Space 注册与失败提示、50ms 热区轮询与负向控制、setContentProtection、演示模式 destroy/重建、路径脱敏、README+6 ADR、从零复现计时。ACCEPT: mock 六码映射、Select-String 明文 0 命中、热区关闭后 2s 内 10 次 isVisible=false、Alt-Tab 截图清单、README 备份与局限齐备。"
+  ],
+  "next_action": "REVISE_ARTIFACT"
+}

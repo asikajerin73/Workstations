@@ -1,0 +1,29 @@
+{
+  "reviewer": "independent-t002-final",
+  "timestamp": "2026-10-31T11:54:43+08:00",
+  "verdict": "PASS",
+  "commands": [
+    {"cmd": "pnpm install --frozen-lockfile (PATH=Node 20.18.1 + npm-global; ELECTRON_MIRROR set; ELECTRON_RUN_AS_NODE cleared)", "exit": 0, "tail": "Lockfile is up to date, resolution step is skipped; Already up to date; postinstall electron-rebuild -f -w better-sqlite3 -v 33.4.11: √ Rebuild Complete; Done in 4.5s using pnpm v9.15.9"},
+    {"cmd": "pnpm typecheck", "exit": 0, "tail": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json; no diagnostics"},
+    {"cmd": "pnpm lint", "exit": 0, "tail": "eslint src/; no diagnostics"},
+    {"cmd": "pnpm lint:fixtures", "exit": 0, "tail": "NO FIXTURES YET (expected at M6); 目录不存在: plugins/fixtures/; explicitly says substantive assertions have not run"},
+    {"cmd": "pnpm exec vitest run tests/unit/manifest-schema.test.ts", "exit": 0, "tail": "Test Files 1 passed (1); Tests 10 passed (10); Duration 1.85s"},
+    {"cmd": "pnpm test", "exit": 0, "tail": "Test Files 6 passed (6); Tests 61 passed (61); Duration 1.98s"},
+    {"cmd": "pnpm build", "exit": 0, "tail": "out/main/index.js 5.36 kB; out/preload/index.js 0.14 kB; out/renderer/index.html 0.54 kB; all three Vite builds succeeded"},
+    {"cmd": "pnpm check:deps", "exit": 0, "tail": "dependencies: 11 / 11 [EXACT]; devDependencies: 17 / 17 [SUBSET]"},
+    {"cmd": "node F:\\gal\\probe\\a7-verify-preload.cjs (direct node invocation)", "exit": 1, "tail": "MODULE_NOT_FOUND: Cannot find module 'electron'; probe script is outside the package tree, so plain node resolution from F:\\gal\\probe cannot resolve the package"},
+    {"cmd": "pnpm exec electron F:\\gal\\probe\\a7-verify-preload.cjs", "exit": 0, "tail": "loadFile = OK; typeof window.ark = object; window.ark.version = 33.4.11; root.children.length = 1; RESULT=PRELOAD-OK"}
+  ],
+  "checks": [
+    {"id": "FIXTURE-LINT-THREE-STATES", "result": "PASS", "evidence": "scripts/lint-fixtures.mjs implements missing-directory and empty-directory NO FIXTURES YET exit 0 branches, then lints collected fixture files and compares diagnostic ruleId set plus error count, exiting 1 on mismatch. Current plugins/fixtures is absent; pnpm lint:fixtures printed the required prominent notice and exited 0."},
+    {"id": "MANIFEST-BAD-ID-003", "result": "PASS", "evidence": "validateManifest performs a narrow string-id precheck before safeParse; Bad_ID throws E-PLUGIN-003. PluginManifestSchema retains the same regex. Unit test explicitly asserts Bad_ID -> E-PLUGIN-003; targeted 10-test file passed."},
+    {"id": "SDS-R5-01-CONSISTENCY", "result": "PASS", "evidence": "Narrow re-review confirms SDS v1.3 summary line 9 and GAP-07 line 2120 now state that the schema regex is retained and validateManifest prechecks string ids before zod, mapping semantic failures to 003; missing/non-string ids remain 002. This matches CL-260b lines 993-1022, §4.3 lines 1857-1863, and implementation lines 15-16, 128-143. The Bad_ID test verifies the 003 result."},
+    {"id": "PRELOAD-ABSOLUTE-ESM", "result": "PASS", "evidence": "src/main/index.ts derives HERE using dirname(fileURLToPath(import.meta.url)) for ESM and injects join(HERE, '../preload/index.js') into required buildWindowOptions(preloadAbsPath). Build output preserves the ESM derivation and injected path construction. out/main/index.js, out/preload/index.js, out/renderer/index.html exist. Electron probe passed with window.ark object and version 33.4.11. Search of built main/preload output found no relative preload literal."},
+    {"id": "WINDOW-OPTIONS-SIGNATURES", "result": "PASS", "evidence": "Current SDS CL-210 signature requires buildWindowOptions(preloadAbsPath: string); SDS's only concrete call examples and current main call supply preloadAbs. Unit tests pass the absolute PRELOAD value and assert it is preserved. T-002 task card's no-argument signature is superseded by SDS and R5-02."},
+    {"id": "TOOLCHAIN-NODE-ENGINES", "result": "PASS", "evidence": "Installed Node is 20.18.1, pnpm 9.15.9. SDS §10.1 pins Node 20.18.1 and parser/plugin 8.18.2; package engines >=20 <21 includes 20.18.1, so there is no direct contradiction. Frozen install/postinstall and check:deps passed."},
+    {"id": "TOUCH-AND-GIT", "result": "PASS_WITH_NOTES", "evidence": "T-002 report declares approved path-utils.ts and bounds.ts additions and tokens.data.json as task-card-authorized; report lists generated CSS/color files and lint-fixtures script among task outputs. git status --short shows the repository's files as untracked; rev-parse confirms a work tree, while git log reports no commits on master yet. This is an initial/uncommitted repository state, not a clean tracked diff; review did not modify repository files other than the requested JSON."},
+    {"id": "G1-COMMANDS", "result": "PASS", "evidence": "Independently ran typecheck, lint, lint:fixtures, test, build, check:deps; every command exited 0. Also ran frozen install, focused manifest tests, and the requested Electron preload probe successfully. Each pwsh run prepended the specified Node/npm-global PATH, set ELECTRON_MIRROR, and cleared ELECTRON_RUN_AS_NODE."}
+  ],
+  "blocking_issues": [],
+  "notes": "Re-review on 2026-10-31T11:54:43+08:00 supersedes the prior FAIL verdict. The requested SDS R5-01 summary and GAP-07 updates are now accurate and consistent with the detailed CL-260b/§4.3 contract, implementation, and Bad_ID test. Earlier independent command/runtime evidence is retained above. git status consisted of untracked repository content and there are no commits yet; the reviewer modified only this requested JSON during the re-review."
+}

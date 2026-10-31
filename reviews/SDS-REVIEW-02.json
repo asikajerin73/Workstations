@@ -1,0 +1,290 @@
+{
+  "artifact": "SDS",
+  "artifact_version": "v1.0",
+  "review_round": 1,
+  "reviewer_role": "implementer",
+  "verdict": "FAIL",
+  "module_readiness": [
+    {
+      "module": "M-01",
+      "can_start": "PARTIAL",
+      "blocker": "loadEnvFromDisk / resolveDataRoot 可直接落码；但 src/ 目录树未给（B-01），且 §3 未定义 ensureDir / isWritable helper 的归属与 AC-M01-05 的抛错点（resolveDataRoot 返回 string，E-WIN-002 却要求在此抛）"
+    },
+    {
+      "module": "M-02",
+      "can_start": "NO",
+      "blocker": "computeWindowBounds 只有签名没有算式（B-02）；getContentView / waitForRendererExit / isFlushing / chromeMetrics 均未定义（B-03）"
+    },
+    {
+      "module": "M-03",
+      "can_start": "NO",
+      "blocker": "无 TriggerApi 签名（register/unregister 只在 F-01 出现）；startedAt/lastFiredAt 作用域未定；tick 未导出，CL-222/AC-M03-* 无法单测（B-12）"
+    },
+    {
+      "module": "M-04",
+      "can_start": "PARTIAL",
+      "blocker": "themeToCssVars 的变量名映射表与 E-THEME-002 的“期望数量”均未给；其余可推断为 --ark-<key>（N-01）"
+    },
+    {
+      "module": "M-05",
+      "can_start": "PARTIAL",
+      "blocker": "migrate / attach LRU 逻辑够用；但 DbApi 无 open()/init()、插件库首次创建与插件库自身迁移归属未定（N-14）"
+    },
+    {
+      "module": "M-06",
+      "can_start": "NO",
+      "blocker": "10 步创建序列无失败回滚（B-05）；computePluginBounds 的 chromeMetrics 未定义（B-04）；PLUGIN_PRELOAD_PATH 与 ark:// 协议注册完全未写（B-01/B-17）"
+    },
+    {
+      "module": "M-07",
+      "can_start": "NO",
+      "blocker": "E-PLUGIN-001..005 语义外链到 PLAN §12.1，SDS 内无表（B-10）；glob 的 <DATA> 展开与静态前缀算法不可实现（B-09）；matchGlob 未定义"
+    },
+    {
+      "module": "M-08",
+      "can_start": "NO",
+      "blocker": "CL-271 整个拦截实现外链到 PLAN G-12，SDS 只剩三句规则（B-11）；AC-M08-01..07 无法照着写"
+    },
+    {
+      "module": "M-09",
+      "can_start": "NO",
+      "blocker": "评分公式“连续长度加成”未定义且 startsWith 分支不可达（B-08）；manifest.commands 无 run()，插件命令的执行通路缺失（B-14）"
+    },
+    {
+      "module": "M-10",
+      "can_start": "PARTIAL",
+      "blocker": "密钥存储与错误码映射可写；ChatMessage 类型未定义、model 白名单与 baseUrl 拼接规则未给（N-02）"
+    },
+    {
+      "module": "M-11",
+      "can_start": "PARTIAL",
+      "blocker": "redact 规则完整可写；但 CL-301 退出演示模式的重载失败路径缺失（B-06），且 redact 归属造成 M-07→M-11 循环依赖（B-13）"
+    },
+    {
+      "module": "M-12",
+      "can_start": "NO",
+      "blocker": "CL-312 伪码与 CL-317 期望输出互相矛盾（B-07）：伪码在 CJK 上只产出单字，bigram 分支是死代码；CL-311 白名单无强制手段（B-16）"
+    }
+  ],
+  "blocking": [
+    {
+      "id": "B-01",
+      "clause": "§0.1 命名约定 / §3 全模块 / CL-240",
+      "type": "missing-file-layout",
+      "finding": "全文只出现 4 个具体文件路径（shared/types.ts、shared/tokens.ts、shared/window-options.ts、src/main/load-env.ts）。src/main 其余 11 个模块、preload、renderer、ark:// 协议 handler、tests/fixtures、scripts/gen-tokens.mjs 的路径与文件名一个都没给。任务卡的 TOUCH 需要精确文件列表，我无法自证不越界。",
+      "evidence": "SDS.md:169, SDS.md:227, SDS.md:375, SDS.md:137, SDS.md:439-445",
+      "what_i_would_have_to_invent": "我会自行拍板 src/main/{bootstrap,window,trigger,theme,db,host,gateway,netguard,palette,ai,privacy}.ts + src/main/index.ts 的装配顺序，preload 设为 src/preload/{index,plugin}.ts。一旦你的任务卡写的是 src/main/core/db.ts，我第一分钟就 TOUCH 越界；而 11 个模块的 import 关系我会按自己那份树定，装配顺序（F-01 vs CL-201 两处顺序不完全一致）也会各写一遍。",
+      "required_fix": "补一节“§2.5 仓库目录树”，逐文件列出 src/main/*.ts、src/preload/*.ts、src/renderer/**、plugins/notes/**、tests/、scripts/，并标明每模块入口文件与导出文件名。"
+    },
+    {
+      "id": "B-02",
+      "clause": "CL-210 / AC-M02-06",
+      "type": "missing-signature",
+      "finding": "computeWindowBounds(display) 只有签名与一句“见参数表”，参数表 bounds 行只写 `computeWindowBounds(display)`；唯一约束是 AC-M02-06“等于副屏 workArea”。但透明无边框浮层通常要缩进（留边距）或按 DPI 取整，二者与“等于 workArea”冲突。",
+      "evidence": "SDS.md:224, SDS.md:229, SDS.md:303",
+      "what_i_would_have_to_invent": "我会按“workArea 内缩 24 DIP 且宽 960 高 640 居中”实现（常见 spotlight 尺寸），于是 AC-M02-06 直接红；或者我赌一把返回 workArea 原样，于是 4K 屏上窗口铺满全屏、点外部无法失焦收起。两种都能编译、都能过 typecheck，错的那个要等 e2e 才发现。",
+      "required_fix": "给出像素级算式（含 width/height 常量、是否居中、是否内缩、DPR 取整规则），并明确 AC-M02-06 是“等于 workArea”还是“等于 workArea 内缩后矩形”。"
+    },
+    {
+      "id": "B-03",
+      "clause": "M-02 职责 / CL-212 / CL-214",
+      "type": "missing-signature",
+      "finding": "M-02 声称“提供 getContentView() 和 bounds 计算”，但 M-02 接口段只有 buildWindowOptions/computeWindowBounds，没有 getContentView 的签名与返回类型；CL-212 的 waitForRendererExit(150)、CL-214 的 isFlushing、flushAllPlugins 的返回语义（超时的插件如何标记）都只有调用没有定义。",
+      "evidence": "SDS.md:209, SDS.md:227-230, SDS.md:250, SDS.md:271, SDS.md:280-284",
+      "what_i_would_have_to_invent": "waitForRendererExit 我会写成 `await new Promise(r=>setTimeout(r,150))`（纯 sleep），于是 CL-212 第 3 步“等 renderer 退场”退化成固定延迟：动画慢的机器上退场被截断，AC-M02-09/AC-M11-05 的“内容不丢”只能靠 flush 兜住；getContentView 我会返回 BrowserWindow.contentView（Electron 33 的类型是 View，不是 WebContentsView），M-06 再 addChildView 时类型对不上，我只好 any 掉。",
+      "required_fix": "补齐 M-02 完整 API 块：getContentView(): View、waitForRendererExit(ms): Promise<void>（说明是靠 ipc ack 还是 sleep）、isFlushing 的持有者、flushAllPlugins 返回 {ok:string[], timedOut:string[]}。"
+    },
+    {
+      "id": "B-04",
+      "clause": "CL-250 步骤 6 / CL-251",
+      "type": "missing-dataflow",
+      "finding": "computePluginBounds(display, chromeMetrics)：chromeMetrics 的类型、字段（Dock 高度？上下留白？安全区？）与“PLAN §11.3”的算式都没在 SDS 内。CL-251 只说“chromeMetrics 变化也调 recalcAll”，谁改它、怎么订阅也没写。",
+      "evidence": "SDS.md:527, SDS.md:540-542",
+      "what_i_would_have_to_invent": "我会定义 chromeMetrics = {dockHeight:number} 并让 bounds 直接等于 workArea 减 dockHeight。若你的 Dock 是悬浮圆角 + 两侧留白，插件 view 会盖住 Dock 或留一条缝；AC-M06-06 只断言“重算了”，缝隙这种视觉缺陷任何自动化测试都抓不到。",
+      "required_fix": "给出 chromeMetrics 接口（字段+单位+默认值）、computePluginBounds 的完整算式，以及 chromeMetrics 的唯一写入点与变更通知方式。"
+    },
+    {
+      "id": "B-05",
+      "clause": "CL-250（10 步）/ E-PLUGIN-006 / E-PLUGIN-007",
+      "type": "resource-leak",
+      "finding": "10 步创建序列没有一步写“失败怎么清理”。步骤 5 addChildView、7 attachInputHook、8 senderMap.set、9 注册 IPC 通道、10 loadURL 都可能失败（E-PLUGIN-006/007），但错误表只写“标记不可用”。没有 teardown 顺序、没有幂等保证，也没写重试时是否会重复注册通道。",
+      "evidence": "SDS.md:516-532, SDS.md:560-566",
+      "what_i_would_have_to_invent": "我会在 load() 外面包 try/catch，catch 里 `view.webContents.close()` 了事：senderMap 里的 webContents.id 变孤儿（M-07 的 resolveCaller 之后永远命中一个已销毁 id），ipcMain.handle 已注册同名通道 → 重试时抛 “Attempted to register a second handler”，插件永久不可用；partition 的 session 与 netguard 也留在内存里。崩溃重载 3 次后（E-PLUGIN-008）这个坑必然触发。",
+      "required_fix": "补 CL-250a：每步的失败清理表（逆序 teardown：removeChildView → webContents.close → senderMap.delete → ipcMain.removeHandler → session 保留/释放），以及 `async load()` 必须复用同一个 teardown() 且幂等；重试前先跑 teardown。"
+    },
+    {
+      "id": "B-06",
+      "clause": "CL-301 退出分支 / E-PLUGIN-007",
+      "type": "missing-error-path",
+      "finding": "退出演示模式写“重新加载私密插件（走完整 M-06 创建序列）→ 重新注册命令 → 持久化 false”，但没写：某个插件重载失败时 demoMode 落不落盘、命令是否恢复、UI 提示什么、是否重试。AC-M11-04 只测成功路径。",
+      "evidence": "SDS.md:871-884, SDS.md:900-905",
+      "what_i_would_have_to_invent": "我会 `await Promise.all(ids.map(load))` 后无条件写 demoMode=false —— 一个插件坏了，用户看到“演示模式已关闭”但笔记面板永远回不来，且没有任何错误提示；反过来若我在失败时不落盘，用户每次启动都被判定为演示模式，开关反复重试。哪个都不是你要的。",
+      "required_fix": "明确：失败插件记 E-PLUGIN-007 并进入“不可用”态、命令不恢复但其余插件正常恢复、demoMode 仍置 false、UI 顶部显示一条可点“重试”的提示；并给出该分支的验收用例。"
+    },
+    {
+      "id": "B-07",
+      "clause": "CL-312 / CL-317 / CL-313",
+      "type": "ambiguous-algorithm",
+      "finding": "CL-312 伪码把每个 CJK 字符单独 push 成 token，于是 token 永不为长度≥2 的 allCJK 串 → `for i in 0..len(t)-2` 的 bigram 分支是死代码。但紧接着的实测样例写 `\"工作站架构\" → [\"工作\",\"作站\",\"站架\",\"架构\"]`，与伪码结果 `[\"工\",\"作\",\"站\",\"架\",\"构\"]` 直接矛盾；CL-317 的 8 条期望序列又依赖 bigram 语义。",
+      "evidence": "SDS.md:964-979, SDS.md:1018-1027, SDS.md:987-993",
+      "what_i_would_have_to_invent": "我按伪码实现（最保险，因为它最“像规范”）：bigram_all 变成单字空格串，FTS 短语查询 `\"工 作 站\"` 对 N4「今天工作 作站很久」的 token 流 今,天,工,作,作,站 需要连续 工,作,站 —— 恰好不连续，侥幸过；但 N1「工作台」token 流 工,作,台 也不能连续命中“工 作 站”，`工作` 查询会让 N2「工作站架构」返回空 → AC-M12-01 大面积红，而我会以为是 FTS 配置问题去改 tokenize，把真正的 bug 埋得更深。",
+      "required_fix": "重写 CL-312：CJK 连续串先聚成 token（buf 里判 CJK 不 flush），或明确改成“对 CJK 直接逐字 bigram 化”。只保留一种，且让伪码输出等于 CL-317 的样例输出。"
+    },
+    {
+      "id": "B-08",
+      "clause": "CL-280 / AC-M09-01..03",
+      "type": "ambiguous-algorithm",
+      "finding": "评分只给 100/60/30/10 四档：①“100 + 连续长度加成”没给加成公式；②`includes(q)` 已覆盖 `startsWith(q)`，60 分档永不可达；③“所有 token 都出现”没定义 token 池与判据（子串还是整词？CJK 单字切分后“新建”=新+建，任意含新含建的标题都 30 分）；④fzf 子序列匹配只写 10 分，没写匹配位置/间距惩罚、没写未匹配回退。",
+      "evidence": "SDS.md:739-751, SDS.md:752, SDS.md:774-779",
+      "what_i_would_have_to_invent": "我会取 bonus = 100 * q.length / haystack.length，于是短标题天然占优；AC-M09-02/03 只断首项，能过，但用户输入“笔记”时 200 条 30 分命令按 id 字典序冒出，手感全崩；同分排序我还会忘掉 last_at 的次级键。AC-M09-04 的“跑 10 次一致”能过，AC 全绿而产品是坏的。",
+      "required_fix": "给出完整公式：连续加成 = f(匹配起点, 长度)、四档的统一 tie-break（含 last_at）、token 分支的判据（整 token 命中 vs 子串命中）、fzf 档的分数区间与位置惩罚。删掉不可达的 startsWith 档。"
+    },
+    {
+      "id": "B-09",
+      "clause": "CL-262 / AC-M07-01",
+      "type": "ambiguous-algorithm",
+      "finding": "①`<DATA>` 占位符未定义谁来展开：AC-M07-01 的 fixture 写 `fs.read: [\"<DATA>/ok/**\"]`，实现里到底是 manifest 存字面量再由网关替换，还是 fixture 生成时替换成绝对路径？②“静态前缀”对 `<DATA>/ok/**` 得 `<DATA>/ok/`（带尾分隔符），`real.startsWith(realPrefix + sep)` 就变成双分隔符 `ok//`，必然 deny。③前缀是 glob 内的字面目录还是文件？`**` 出现在中间（`a/**/b`）该怎么取前缀？④`matchGlob` 未定义——自实现 `*` 不跨 `/` 的语义边界（是否 dotfile、是否大小写不敏感、Windows 反斜杠 vs 正斜杠）一字未提。⑤`realpathSync(prefix)` 对不存在的路径“跳过”，等于权限静默失效，无日志。",
+      "evidence": "SDS.md:614-627, SDS.md:652, SDS.md:919",
+      "what_i_would_have_to_invent": "我会用朴素的 `real.startsWith(prefix)`（不加 sep）：于是 `C:\\data\\ok-evil\\x` 通过 `C:\\data\\ok/**` 的校验——这是实实在在的越权绕过，而 AC-M07-01 用的 `secret/x` 恰好不共享前缀，测试照绿。前缀 realpath 失败时我会 console.warn 而不是 deny。",
+      "required_fix": "补：<DATA> 展开时机与函数名；前缀取法（去尾分隔符、只有字面段才 realpath、`**` 中间的处理）；matchGlob 的完整语义（归一化为 /、大小写、dot 文件）；前缀不可解析时的行为（记 audit warn + deny）。"
+    },
+    {
+      "id": "B-10",
+      "clause": "CL-260 / §4.3 / 错误表 646 行",
+      "type": "missing-error-path",
+      "finding": "validateManifest 的错误码 E-PLUGIN-001..005 只说“见 PLAN §12.1”，SDS 只散落两条（AC-M07-05 缺 id → 002；AC-M07-06 entry 为 ../../evil.html → 004）。另 3 条（001/003/005）在 SDS 中无任何条件绑定，minAppVersion 也只有一句“高于当前 → E-PLUGIN-005”。",
+      "evidence": "SDS.md:589, SDS.md:597, SDS.md:646, SDS.md:656-657, SDS.md:1282",
+      "what_i_would_have_to_invent": "我会按 zod 报错顺序映射：zod 第一个 issue 的 path[0]==='id' → 002，path[0]==='entry' → 004，其余一律 003，001 用来表示“文件不存在/manifest 读不出”，005 留给 minAppVersion。于是“version 格式非法”会返回 003 而你可能期望 001，任务卡的 ACCEPT 与实现各说各话。",
+      "required_fix": "把 PLAN §12.1 的 5 条码→条件→message 模板整表搬进 SDS；补齐 minAppVersion 比较所用的 semver 规则（是否支持 ^/范围）。"
+    },
+    {
+      "id": "B-11",
+      "clause": "CL-271 / CL-272 / AC-M08-01..07",
+      "type": "missing-dataflow",
+      "finding": "netguard 的核心——`ensureNetGuard` 实现——被整段外链到 PLAN G-12（“见 PLAN G-12 的 ensureNetGuard 代码（含 onBeforeRedirect）”）。SDS 只留三句：file:// 与 ark:// 放行、URL 解析失败 deny、非白名单 cancel。以下全部未定：allowlist 为空时 https 是否全 deny（默认 `[]` 含义）、onBeforeRequest 与 onBeforeRedirect 的 phase 字段、WebSocket/wss、子资源与主文档是否同策略、registerSchemesAsPrivileged 的顺序依赖、session 级 hook 是否会重复安装（ensure 被调用两次怎么办）。",
+      "evidence": "SDS.md:668-673, SDS.md:681-691, SDS.md:700-710",
+      "what_i_would_have_to_invent": "我会只挂 onBeforeRequest 并在白名单为空时放行（怕把自己锁死、dev 期 HMR 断掉），于是 AC-M08-02（主进程 net.request 必须 cancel）直接失败；或者我按最严格全 deny，dev 下 renderer 的 vite client 连不上，我为了调试再开一个 `if (!app.isPackaged) return` 的后门——这个后门会一路带进生产。",
+      "required_fix": "把 ensureNetGuard 的完整实现（含 protocol/file 白名单分支、http/https/ws/wss 判定、两种 phase、幂等 guard 标志、审计字段）写进 SDS，不再外链 PLAN。"
+    },
+    {
+      "id": "B-12",
+      "clause": "M-03 / CL-221 / CL-222",
+      "type": "missing-signature",
+      "finding": "M-03 只有 TriggerConfig 与一段 tick() 裸代码，没有 TriggerApi（F-01 里的 trigger.register() 无签名）；startedAt / lastFiredAt 的归属（模块级单例 vs 闭包）未写；tick 未导出；onSummon 来源未注入；timer 的清理（unregister / app quit）未写。而 CL-222 要求用 process.getCPUUsage() 采样断言 CPU 增量，必须有可单独启停的入口。",
+      "evidence": "SDS.md:315-321, SDS.md:329-348, SDS.md:351-353, SDS.md:1467",
+      "what_i_would_have_to_invent": "我会写模块级 `let startedAt=0`（跟伪码字面一致）：于是多屏测试里上一用例残留的 startedAt 泄漏到下一用例，AC-M03-04（屏内自由移动 2s 不呼出）偶发失败，我会以为是 dwell 逻辑错，去加 sleep 掩盖 → 变成 flaky 测试。另外我会把 setInterval 的 id 存在模块变量里，热重载 dev 下叠加多个 timer，CPU 断言随机红。",
+      "required_fix": "补 M-03 API：`register(cfg, onSummon): {ok:boolean; code?:'E-WIN-020'}`、`unregister(): void`、`createEdgeWatcher(cfg, now)` 返回带内部状态的纯对象（便于注入时钟单测），明确状态在闭包内、timer 单一持有者。"
+    },
+    {
+      "id": "B-13",
+      "clause": "模块依赖表 / CL-263 / §6 脱敏行",
+      "type": "missing-dataflow",
+      "finding": "M-07 的审计要求路径先过 M-11 的 redact()，§6 又要求“所有日志/审计/UI 路径输出前过 redact()”；但 §2 依赖表写 M-11 依赖 M-02、M-06，而 M-06 依赖 M-07 —— 形成 M-07 → M-11 → M-06 → M-07 的循环。redact 是纯函数（本应进 shared/），SDS 没有把它放进去，也没写它读 dataRoot/用户名这些环境值从哪注入。",
+      "evidence": "SDS.md:120-124, SDS.md:637, SDS.md:861, SDS.md:886-894, SDS.md:1248",
+      "what_i_would_have_to_invent": "我会在 gateway 里 import '../privacy/redact'，TS 编译过、运行时可能因为初始化顺序拿到未设置的 dataRoot（脱敏漏掉真实路径）；或者我干脆在 gateway 里复制一份 redact 实现——两份实现分叉后，审计日志泄漏真实 C:\\Users\\<name>，而 AC-M11-01/02 只测 privacy 那一份，仍然全绿。",
+      "required_fix": "把 redact 定义为 shared/redact.ts 的纯函数 `redact(text, ctx:{dataRoot,username})`，由调用方注入 ctx；依赖表删掉 M-07→M-11 的边，改为 M-07→shared。"
+    },
+    {
+      "id": "B-14",
+      "clause": "M-09 / §4.3 commands / F-03",
+      "type": "missing-dataflow",
+      "finding": "PaletteApi 只能 register(cmd: Command)，Command 带 `run(): Promise<void>` —— 但插件命令来自 manifest.commands（只有 id/title/keys），插件是独立 WebContentsView，主进程 portfolio 里没有它的 run()。通道名（plugin:<id>:command.run？）、参数、谁在 renderer 侧接、返回值、失败如何回 E-PALETTE-002 全都没写。F-03 只写“命令 run()”。",
+      "evidence": "SDS.md:720-737, SDS.md:1127-1131, SDS.md:1207-1209, SDS.md:766-768",
+      "what_i_would_have_to_invent": "我会自己发明 `plugin:<id>:command.run` 通道 + 在 PLUGIN_PRELOAD 里 `ipcRenderer.invoke`，并让 run() 被包装成 `() => invoke(...)`；同时猜测“插件命令执行前先 restoreAll() 再执行”（F-03 那句自问自答的注释说明连作者都没定）。如果插件 renderer 没实现该通道，我会拿到一个挂起的 Promise，面板永远等着，E-PALETTE-002 不会触发。",
+      "required_fix": "定义插件命令执行协议：通道名、payload（{commandId}）、超时（如 10s）、返回包络、失败映射到 E-PALETTE-002/003、以及执行时 view 可见性顺序（先 run 后关面板）。"
+    },
+    {
+      "id": "B-15",
+      "clause": "CL-311 / 附录铁律 2 / AC-M12-02",
+      "type": "untestable-acceptance",
+      "finding": "“禁止 INSERT OR REPLACE / INSERT OR IGNORE”只是一条散文规则：没有强制机制（lint 规则名、eslint 配置位置、CI 检查），没有代码层收口（是否只允许一个 saveNote() 函数写 notes 表），AC-M12-02 也不检测“语句种类”，只检测“旧词命中 0”。而 recursive_triggers=OFF 下 OR REPLACE 的 FTS 残留恰恰可能表现为旧词仍命中——但只在 old bigram 与新 bigram 有差异时；如果测试语料只改一个词，可能刚好命中不到旧词而放行。",
+      "evidence": "SDS.md:945-960, SDS.md:1065, SDS.md:1355, SDS.md:452",
+      "what_i_would_have_to_invent": "我会在 notes 仓储里手写 SQL，第二次改代码时为了“顺手”写 `INSERT OR REPLACE INTO notes`（它看起来更短）。CI 全绿、typecheck 全绿；直到某天用户改标题，搜索旧标题仍命中——而 AC-M12-02 那条用例我按“换掉一个词”构造，恰好查的是新词，没发现。",
+      "required_fix": "① SRS 指定单点写入函数 `saveNote()` 且 notes 表只允许它访问；② 加 lint 规则（例如 eslint no-restricted-syntax 匹配 /INSERT\\s+OR\\s+(REPLACE|IGNORE)/i，或自写 scripts/check-sql.mjs 扫 main/ 与 plugins/ 的字符串字面量）并在 CI 里跑；③ AC-M12-02 补一条“把 OR REPLACE 换回去必须让该用例失败”的反向验证。"
+    },
+    {
+      "id": "B-16",
+      "clause": "模块清单 / M-07 与 M-08 的调用点",
+      "type": "missing-dataflow",
+      "finding": "ark:// 自定义协议完全没有设计：CL-250 第 10 步 `loadURL('ark://plugin/<id>/index.html')`，但全文没有 registerSchemesAsPrivileged（必须在 app ready 前调用）、没有 protocol.handle 的路径解析与目录穿越防护、没有说明 manifest.entry 与 loadURL 的关系（第 10 步写死了 index.html，entry 就没用了？AC-M07-06 又要求 entry 校验）。同理 PLUGIN_PRELOAD_PATH 是一个未定义的常量。",
+      "evidence": "SDS.md:531, SDS.md:503-514, SDS.md:657, SDS.md:1115",
+      "what_i_would_have_to_invent": "我会忽略 entry，硬编码 `ark://plugin/${id}/index.html`（跟第 10 步字面一致），于是 entry 校验变成死代码、AC-M07-06 测了一个永不使用的字段；protocol.handle 我会用 `path.join(pluginDir, url.pathname)` 拼路径——`ark://plugin/x/../../../secret` 直接穿越读文件（因为 ark:// 在 netguard 里是放行的）。",
+      "required_fix": "补一节 ark:// 协议：注册时机与 privileges（standard/secure/supportFetchAPI）、URL 形态（是否含 entry）、protocol.handle 的解析与 resolve→startsWith 校验、404 行为；并把 PLUGIN_PRELOAD_PATH 落成具体路径常量。"
+    }
+  ],
+  "nonblocking": [
+    {
+      "id": "N-01",
+      "clause": "§0.1（第 30 行）与 themeToCssVars",
+      "finding": "示例声称 IPC 通道“见 CL-401”，但全文没有 CL-401，也没有 preload 暴露面清单（只散见 ark.theme.set、ark.ai.chat）。主题变量名映射亦无表。",
+      "suggestion": "补“§3.0 IPC 与 preload 契约”表（通道名→方向→参数→返回→错误码），并按 --ark-<key> 给出一张 token→变量名映射表（含 space.N、type.h1.size 这类嵌套命名规则）。"
+    },
+    {
+      "id": "N-02",
+      "clause": "M-10 / CL-291",
+      "finding": "ChatMessage 类型未定义，model 允许值与 baseUrl 末尾斜杠处理未写；AC-M10-06“共 2 次请求”未说明退避期间是否受 30s 总预算约束。",
+      "suggestion": "给出 `type ChatMessage = {role:'system'|'user'|'assistant'; content:string}`、model 白名单（或声明透传）、`new URL('/v1/chat/completions', baseUrl)` 的拼接规则、重试是否重算超时。"
+    },
+    {
+      "id": "N-03",
+      "clause": "CL-213 / AC-M02-05",
+      "finding": "renderer 侧入场动画的 duration/spring 参数没给，t1 取自 onAnimationComplete，320ms 预算实际上由未定义参数决定。",
+      "suggestion": "给出入场动画参数（duration/ease）与“动画被 prefers-reduced-motion 关闭时如何触发 onAnimationComplete”的约定。"
+    },
+    {
+      "id": "N-04",
+      "clause": "AC-M08-01",
+      "finding": "该用例依赖 CSP 拦截 renderer fetch，但全文没有 CSP 字符串或注入点（只说“在 HTML/renderer 侧配置”）。",
+      "suggestion": "给出 webPreferences 的 CSP 注入方式与策略串（default-src 'self'; connect-src none 等），否则该条验收没有落点。"
+    },
+    {
+      "id": "N-05",
+      "clause": "§4.1 错误码",
+      "finding": "E-FS-002 出现在联合类型里但全文无任何条件绑定；E-WIN-003 只跟 .env 有关，语义清楚。",
+      "suggestion": "给 E-FS-002 一个条件（例如写入目标不可写 / 磁盘满），或从联合类型移除。"
+    },
+    {
+      "id": "N-06",
+      "clause": "CL-250 步骤 8 / CL-261",
+      "finding": "senderMap 由 M-06 写、M-07 读，但它的类型、持有者、销毁时机（webContents 销毁时删不删）未定义。",
+      "suggestion": "在 shared 定义 `SenderRegistry`（Map<number,string>）并由 M-06 持有、M-07 注入读取；明确 webContents destroyed 时清理。"
+    },
+    {
+      "id": "N-07",
+      "clause": "CL-314",
+      "finding": "verifyContiguous 的多 gram 分支用原文 `text.slice(...)` 比较，而 grams 在 CL-312 里已 toLowerCase；大写拉丁查询会出现假阴性。",
+      "suggestion": "进入比对前统一 `const t = text.toLowerCase()`，或 grams 保留原形并在比较时双向 toLowerCase。"
+    },
+    {
+      "id": "N-08",
+      "clause": "CL-313 单字 LIKE 分支",
+      "finding": "“走 LIKE 分支”没给 SQL 与排序；AC-M12-01 期望 `工` → [4,2,1] 暗示 ORDER BY updated_at DESC。",
+      "suggestion": "写出该分支的完整 SQL 与 LIMIT（建议与主查询一致 100）。"
+    },
+    {
+      "id": "N-09",
+      "clause": "AC-M02-02",
+      "finding": "`skipTaskbar` 是构造项不是方法，“spyOnSetSkipTaskbar 被以 true 调用”在 Electron 里没有对应 API。",
+      "suggestion": "改为断言语义等价物：spy BrowserWindow 构造函数参数，或断言 `win.isSkipTaskbar()`/任务栏不可见。"
+    },
+    {
+      "id": "N-10",
+      "clause": "AC-M03-05/06、AC-M09-01",
+      "finding": "热区用例需要移动真实 OS 光标、性能用例需要 1000 条命令数据集，两者都没有夹具或测试环境说明（Playwright 不注入全局热键已声明，但光标注入未声明）。",
+      "suggestion": "声明测试替身：clock + 注入式 getCursorScreenPoint，使 AC-M03-* 变纯单测；给出 `tests/fixtures/commands-1000.json` 的生成脚本。"
+    },
+    {
+      "id": "N-11",
+      "clause": "CL-302",
+      "finding": "规则 2 需要“当前用户名”，来源（os.userInfo() vs process.env.USERNAME）未写；规则顺序下 `C:\\Users\\x` 会先被规则 2 替换为 `<USER>` 再被规则 4 匹配，产生 `<USER>\\x`（与 AC-M11-01 期望一致，但依赖顺序，容易写反）。",
+      "suggestion": "标注用户名来源函数，并在 CL-302 里注明“顺序不可换，规则 4 只能作用于规则 2 之后仍以盘符开头的路径”。"
+    },
+    {
+      "id": "N-12",
+      "clause": "M-05 / CL-240",
+      "finding": "插件库 <DATA_ROOT>/plugins/<id>.db 的首次创建、插件库自身的 user_version 与迁移归属未定；DbApi 缺 open()/close()。",
+      "suggestion": "补 `open(dataRoot): void`、attachPlugin 负责“文件不存在则创建 + 跑插件库迁移”，并声明插件库 schema 由插件自己提供（含版本号）。"
+    }
+  ],
+  "next_action": "REVISE_ARTIFACT"
+}

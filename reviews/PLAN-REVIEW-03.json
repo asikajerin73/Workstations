@@ -1,0 +1,309 @@
+{
+  "artifact": "PLAN",
+  "artifact_version": "v2.0",
+  "review_round": 2,
+  "reviewer_role": "contract-auditor",
+  "verdict": "FAIL",
+  "blocking": [
+    {
+      "id": "B-01",
+      "clause": "G-6 / G-7 / Q-11 / Q-12",
+      "type": "missing",
+      "finding": "全文引用了不存在的章节：G-6「见 §11 z 序表」、G-7「字段见 §12」「权限网关：见 §12 全文」。文档实际只到 §10，没有 §11、§12。manifest schema、能力清单（fs.read 之外还有什么）、权限匹配语义、z 序层级全部缺失。",
+      "evidence": "L105「见 §11 z 序表」；L110「字段见 §12」；L111「见 §12 全文」。文件末尾为 §10 开放问题（L347-369），无 §11/§12 标题。同时 G-11 的 ui.private 与 G-4 的 flushAll 契约也声称落在 §12。",
+      "required_fix": "把 §11（z 序与视图层叠表）、§12（manifest 字段表 + 能力枚举 + glob 匹配规则 + 通道命名 + 错误码 + flush 契约）作为正式章节写进 PLAN，或在 PLAN 中删除这些引用并明确「由 SDS 定义」且给出对应的可验收占位条款。",
+      "blocks_what": "G-7 的 manifest 校验与权限网关无法实现（不知道要校验哪些字段、有哪些能力）；G-6 的层叠行为无法实现；Q-12 声称 CLOSED 但语义不存在；M6/M7 无法给出出口判据。"
+    },
+    {
+      "id": "B-02",
+      "clause": "G-4 动效预算",
+      "type": "untestable",
+      "finding": "t0 用主进程 Date.now()（Unix epoch 毫秒，约 1.7e12），t1 用 renderer 的 performance.now()（相对该 renderer navigation start 的单调毫秒，通常 < 1e5）。两者时间基准不同，t1 - t0 恒为巨额负数，断言 (t1-t0) ≤ 320ms 永远成立——这是假通过，不是验证。跨进程还叠加时钟源差异。这是本轮修复（B-05 采纳）新引入的缺陷。",
+      "evidence": "L72「t0 = 主进程调用 win.show() 的 Date.now()；t1 = renderer 在 framer-motion onAnimationComplete 回调里回传 performance.now()。断言连续 5 次 (t1-t0) ≤ 320ms」。",
+      "required_fix": "统一时间基准：两端口径都用 Date.now()（同机可跨进程比较），或统一用 performance.timeOrigin + performance.now() 并显式换算；同时规定 t0 采集点在 win.show() 返回前、t1 在 onAnimationComplete 首帧回调中，并定义 320ms 是 P50 还是全部 5 次的上界。",
+      "blocks_what": "动效预算这一条从「可执行断言」退化为恒真断言；性能回退（例如首帧 900ms）不会被发现，M4 出口条件形同虚设。"
+    },
+    {
+      "id": "B-03",
+      "clause": "G-2(a)",
+      "type": "untestable",
+      "finding": "`win.isSkipTaskbar()` 在 Electron 33 的 BrowserWindow 上不存在（只有 setSkipTaskbar(skip)，没有对应 getter）。这条断言一旦执行就是 TypeError，无法产生通过/失败结论。",
+      "evidence": "L48「并断言 win.isVisible() === false、win.isSkipTaskbar() === true」。Electron BrowserWindow 实例方法表内无 isSkipTaskbar。",
+      "required_fix": "改为对 setSkipTaskbar 调用的参数快照/间谍断言（构造后断言调用过 setSkipTaskbar(true)），或直接依赖 L42-47 已有的构造参数快照；把 isVisible() 保留。",
+      "blocks_what": "G-2(a) 整条无法自动验收，而「启动即隐形」是产品第一承诺；唯一剩下的自动化证据只有构造参数快照。"
+    },
+    {
+      "id": "B-04",
+      "clause": "G-9 检索实现 / R-8",
+      "type": "untestable",
+      "finding": "bigram-AND 方案对跨词边界的组合必然误命中：正文「工作安排，作站准备」的 bigram 集合含「工作」与「作站」，查询「工作站」会 AND 命中，而该文并不含「工作站」三连字。计划自己承认这一点（R-8 概率高），但把修复写成条件句「若误命中则加位置连续性后置过滤」，并把影响标为「低」——等于把可判定性推到实施期。同时固定语料只有 N1/N2/N3，缺一个正是「含 工作 与 作站 但不含 工作站」的负例，因此该缺陷在当前验收表下根本不会暴露。",
+      "evidence": "L172-176 toBigram 示例；L187-202 语料表 3 篇、6 条查询，无负例；L313「R-8 概率 高 / 影响 低 / 若误命中则加\"位置连续性\"后置过滤」。同时 toBigram 丢弃空白与标点后按整篇切分，位置信息在入库时已丢失，后置过滤在只有 bigram 列可用时无法在 SQL 层实现，必须回表读 body 重算。",
+      "required_fix": "二选一并写死：①在语料中加入负例 N4（含 工作 与 作站、不含 工作站）并把期望写为 []，同时把「位置连续性后置过滤」（回表取 body、对查询串做 indexOf 精确子串校验）列为 S0 必做而非条件项；②放弃 bigram，改用 trigram 或应用层倒排。R-8 的「影响」不得标为低。",
+      "blocks_what": "检索正确性没有可判定标准；实施者按现文实现会得到一个已知误命中的检索器，而全部验收用例仍全绿，属于验收盲区而非可接受风险。"
+    },
+    {
+      "id": "B-05",
+      "clause": "G-6 捕获点 vs G-4 e2e",
+      "type": "infeasible",
+      "finding": "before-input-event 是 per-WebContents 事件，只在宿主 webContents 收到输入时触发。插件是独立 WebContentsView（独立 webContents），主窗口的 webContents 收不到插件视图内的按键。因此「主进程 webContents.on('before-input-event')」按字面实现只能在主 renderer 有焦点时吞掉 Ctrl+K；而 G-4 的 e2e 明确要求插件 view 抢到焦点时仍能工作（「在输入框连续输入 3s → 断言 isVisible()===true」），G-6 的 e2e 也未规定当时焦点在哪一层。两处断言对焦点状态的假设互相矛盾。",
+      "evidence": "L97「主进程 webContents.on('before-input-event')，仅在窗口可见时吞掉 Ctrl+K」；L78「e2e：呼出 → Ctrl+K → 打开笔记 → 在输入框连续输入 3s」；L109 插件独立 WebContentsView。",
+      "required_fix": "改为：对所有 WebContents（主 renderer + 每个插件 view）统一挂 before-input-event，handler 抽成一个函数；或在插件 preload 内注册并 preventDefault 后经 IPC 上报。并规定 e2e 必须包含「焦点在插件 view 内时按 Ctrl+K 仍能唤起面板」这一条。",
+      "blocks_what": "最核心的手感（在任何插件里都能 Ctrl+K）不可实现，且现有 e2e 会在错误前提下判绿。"
+    },
+    {
+      "id": "B-06",
+      "clause": "§8 M7 / M8 与 G-6 验收",
+      "type": "contradiction",
+      "finding": "G-6 验收要求输入「新建」后首项 id 恒为 'notes.new' 且回车后「断言笔记已创建」，而笔记插件在 M8（D8-D9）才交付，M7（D8）就要 G-6 全绿。同时 L334 依赖链自述「命令面板 → 笔记」，进一步坐实顺序矛盾：命令面板的验收对象尚不存在。",
+      "evidence": "L104「断言结果首项 id === 'notes.new' → 回车 → 断言笔记已创建」；L328「M7 命令面板 D8」；L329「M8 笔记插件 D8-D9」；L334「…→ 命令面板 → 笔记 → AI→…」。",
+      "required_fix": "把 G-6 拆成 6a（纯匹配/评分/键盘，用 fixture 命令集验收）与 6b（跨插件命令 notes.new 的端到端，放到 M8 之后）；或把 M7 与 M8 合并为单一里程碑。",
+      "blocks_what": "M7 出口条件在排期上不可达；若实施者按 M7 硬做，只能造一个假 notes 命令，反而掩盖集成问题。"
+    },
+    {
+      "id": "B-07",
+      "clause": "§8 里程碑表（自述「严格串行，无重叠」）",
+      "type": "contradiction",
+      "finding": "表格自身存在日期重叠：M4(D4-D5) 与 M5(D5-D6) 共用 D5；M7(D8) 与 M8(D8-D9) 共用 D8；M8(D8-D9) 与 M9(D9) 共用 D9；M9(D9) 与 M10(D9-D10) 共用 D9；M3(D3-D4) 与 M2(D2-D3) 共用 D3。与标题「严格串行，无重叠」直接冲突。此外 D3-D10 共 8 个工作日要完成 M3-M11 九项，其中 M6（插件宿主 + 权限网关 + 网络白名单 + 崩溃隔离，2 天）、M8（Monaco + FTS + bigram + 双链 + 自动保存，1.5 天）明显低于内容量。",
+      "evidence": "L317-332 日期列；L283「S0 8~10 个工作日」。",
+      "required_fix": "重排为无重叠的半日粒度分配，并给每个里程碑一个「内容量→人日」的估算；M6、M8 至少各加 1 天，或明确把 G-12、崩溃隔离移出 S0。",
+      "blocks_what": "排期不可作为进度判据（第一天就会同时关两个里程碑的出口条件）；按现排期执行必然在 M6/M8 处超期，且无法判断是超期还是计划本来就不成立。"
+    },
+    {
+      "id": "B-08",
+      "clause": "G-1 依赖白名单 / §5 依赖约束",
+      "type": "ambiguous",
+      "finding": "同一件事有三个互不兼容的口径：G-1「白名单，核心依赖，恰好 12 个，脚本可数」、G-1 计数脚本「输出必须 ≤ 20」、§5「核心依赖 ≤ 20」。若脚本只断言 ≤20，则加入第 13、14 个未被白名单授权的依赖仍然通过——白名单不可执行。计数口径本身也未定义（dependencies / optionalDependencies / peerDependencies / devDependencies / 传递依赖），且 devDependencies「不计」，于是任何依赖只要写进 devDependencies 就绕过约束（Tailwind 正是这种情况：§5 技术栈要求 Tailwind 3.x、G-5 的 ARK-COLOR-4 需要 Tailwind 色板数据，但白名单 12 个里没有它）。此外 electron-updater 在白名单内，却没有任何目标使用它（N-8 不做自启、无更新流程），且它与 G-12「默认空域名白名单」冲突。",
+      "evidence": "L36「恰好 12 个…node scripts/count-deps.mjs 输出必须 ≤ 20」；L281「核心依赖 ≤ 20，白名单见 G-1（实际 12 个）」；L277 技术栈含 Tailwind 3.x；L90 ARK-COLOR-4 依赖 Tailwind 色阶；L36 白名单含 electron-updater。",
+      "required_fix": "脚本改为双重断言：dependencies 的 key 集合 ⊆ 白名单（顺序无关的集合相等或子集），且 |dependencies| ≤ 20；显式写明计数范围（只算 dependencies，devDependencies 不计且必须列出允许的 devDependencies 名单，至少含 tailwindcss/postcss/autoprefixer/typescript/eslint/electron-vite/electron-builder/@electron/rebuild/playwright）；删除 electron-updater 或补一条使用它的目标。",
+      "blocks_what": "「新增依赖需 ADR」这条 §5 约束没有任何机器判据；实现者把库塞进 devDependencies 即可无声扩张依赖面，G-1 仍然全绿。"
+    },
+    {
+      "id": "B-09",
+      "clause": "G-1 lint 门槛 vs G-5 颜色硬编码夹具",
+      "type": "contradiction",
+      "finding": "G-1 要求 `pnpm lint` 零 error 零 warning（退出码 0）；G-5 要求「`pnpm lint` 对该目录恰好输出 5 条错误，码分别为 ARK-COLOR-1..5」。同一命令被要求既零错误又恰好 5 条错误，两条验收互斥，必然有一条永远失败。",
+      "evidence": "L27「pnpm lint # eslint，零 error 零 warning」；L92「验收：pnpm lint 对该目录恰好输出 5 条错误」。",
+      "required_fix": "拆两条命令：`pnpm lint`（全仓零 error 零 warning，fixtures 目录被 ignore）+ `pnpm lint:fixtures`（对夹具目录输出 5 条指定码，脚本用 --format json 断言 ruleId 集合）。并写明 lint 的作用域（src/ 与 plugins/ 的边界）。",
+      "blocks_what": "G-1 或 G-5 至少一条永久不可通过，M3 出口条件不成立；同时也说明 lint 的作用域本身没有定义。"
+    },
+    {
+      "id": "B-10",
+      "clause": "§3 N-12 反向断言 vs G-12",
+      "type": "contradiction",
+      "finding": "两个问题。①N-12 的反向断言 Pattern 含 'clipboard'，期望 0 命中；但 G-12 明确允许实现 `clipboard-read` 权限分支（setPermissionRequestHandler 的例外），任何实现都会在 src 里出现字符串 'clipboard'，断言必然失败。②`Select-String -Path src/**/*.ts*` 中的 `**` 在 PowerShell 不是递归通配，等价于单层 `*`，因此该命令并不会扫描 src 全树——即使全绿也不能证明「没有 terminal/filesearch 代码」，属假通过。",
+      "evidence": "L263「Select-String -Path src/**/*.ts*,plugins/**/manifest.json -Pattern 'terminal|xterm|node-pty|filesearch|screenshot|ocr|canvas|clipboard' 期望 0 命中」；L240「setPermissionRequestHandler 全部拒绝（除 clipboard-read 视需要）」。",
+      "required_fix": "二选一并写死：从 N-12 的 Pattern 中移除 clipboard（若确实不做剪贴板读取，则删除 G-12 的 clipboard-read 例外）；命令改为 `Get-ChildItem -Recurse -File -Path src,plugins -Include *.ts,*.tsx,*.json | Select-String -Pattern ...` 或给 ripgrep 命令，并规定命中即非零退出码。",
+      "blocks_what": "非目标边界既不能真实扫描（假绿），又与 G-12 的实现要求互斥（真红），「可执行边界」失去意义——而 R-1 的缓解正依赖这条边界。"
+    },
+    {
+      "id": "B-11",
+      "clause": "G-10 错误码全表",
+      "type": "missing",
+      "finding": "表内只有 E-AI-001..006，覆盖 未配置/解密失败/401/429/网络不可达/超时；但下述路径没有码：①上游 5xx（且 L219 明确「失败重试 1 次（仅 5xx 与网络错误）」，重试后仍 5xx 无码可返回）；②`safeStorage.isEncryptionAvailable() === false` 时怎么走（L208 只写了 true 分支，无兜底、无码）；③Key 为空字符串或格式非法。因此「6 个错误码各自映射正确」这条断言无法覆盖重试失败与不可用加密两条主路径。",
+      "evidence": "L208「safeStorage.isEncryptionAvailable() → encryptString(key) → 写 data/secrets/ai.bin」；L210-218 错误码表；L219「失败重试 1 次（仅 5xx 与网络错误）」；L221「6 个错误码各自映射正确」。",
+      "required_fix": "补 E-AI-007（上游 5xx/重试后仍失败）、E-AI-008（safeStorage 不可用，含降级策略：拒绝保存并提示，而非明文落盘）、E-AI-009（Key 格式非法/空）；并在验收里对每条附一个 mock 用例（含 5xx 两次后返回 007）。",
+      "blocks_what": "AI 门面在两种常见失败下返回未定义行为（可能抛未捕获异常或静默空值），G-10 的自动化断言只覆盖 happy path + 4 个易造码。"
+    },
+    {
+      "id": "B-12",
+      "clause": "G-7 插件 view 几何/生命周期 + 命令面板承载层",
+      "type": "missing",
+      "finding": "全文没有规定：谁计算 WebContentsView 的 setBounds（坐标是 workArea 相对还是窗口相对）、窗口 resize / 显示器增减 / scaleFactor 变化时如何重算、view 何时 addChildView / removeChildView / destroy、插件加载后 view 的初始可见性、命令面板本身渲染在主 renderer 路由里还是又一个 WebContentsView（这决定 z 序与焦点行为，而 §11 缺失）。G-6 的 setVisible(false) 与 G-11 的 destroy 都需要这些前置定义。",
+      "evidence": "L105「命令面板打开时对当前插件 view 执行 view.setVisible(false)…见 §11 z 序表」；L233「WebContentsView 被 destroy 而非仅隐藏」；L71「按光标所在屏 workArea 全屏」；全文无 setBounds/addChildView 的任何出现。",
+      "required_fix": "补一节视图层契约：view 树（root window webContents = shell 层，插件 view 为子视图，命令面板为 shell 层内的 React 路由并临时隐藏插件 view）、bounds 计算函数签名（入参 displayWorkArea(DIP) → Rect）、监听哪些事件重算（resize/display-metrics-changed/display-added/removed）、view 的创建与销毁时机表。",
+      "blocks_what": "M6 无法开工也无法验收：插件 view 摆在哪儿没人定义，G-6 的层叠与 G-11 的 destroy 都建立在未定义的视图树之上。"
+    },
+    {
+      "id": "B-13",
+      "clause": "G-9 [[双链]] 自动补全与链接解析",
+      "type": "missing",
+      "finding": "G-9 标题声称「`[[双链]]` 自动补全」，但全文没有：触发规则（输入到第几个 `[`、是否需在行首/任意位置、Esc 与上下键行为）、补全候选来源与排序、选中后插入的文本格式（是 `[[标题]]` 还是 `[[id|标题]]`）、链接解析语法（按 title 还是 id 解析、大小写/空格归一、重名如何裁决、目标不存在时的表现）、以及「补全」这一功能本身的任何验收条目。唯一相关的验收只有反向链接面板计数 1 条。",
+      "evidence": "L133「Markdown 编辑（Monaco）+ `[[双链]]` 自动补全 + 反向链接面板」；L204「双链验收：…每篇反向链接面板各显示 1 条」。全文无补全相关条款。",
+      "required_fix": "给出补全规格（触发字符与上下文判定、查询串截取范围、候选查询 SQL、排序规则、插入文本模板、键盘交互、取消条件）与链接解析规格（正则、归一化、重名策略、失效链接显示），并各配 1 条 e2e 断言（例如输入 `[[工` 后候选中含 N1/N2，回车后文本等于 `[[工作台]]` 且反向链接面板出现对应条目）。",
+      "blocks_what": "笔记插件最核心的交互无契约、无验收：实施者可以交一个没有补全的实现而 G-9 全绿；重名笔记下的双链行为完全不可预期。"
+    },
+    {
+      "id": "B-14",
+      "clause": "G-12 网络出口白名单",
+      "type": "security",
+      "finding": "`session.webRequest.onBeforeRequest` 是 per-session 的，而 G-7 规定每插件用独立 `partition`（= 独立 session）。计划只写「主进程 session.webRequest」，未规定要挂到哪个/哪些 session。若只挂 defaultSession，插件 view 所在 partition 的请求完全不被过滤，与 §5「唯一出网路径是主进程的 AI 调用」直接冲突，且 net-escape 夹具会真的把 example.com 请求发出去（隐私条款被破）。同一处也未规定新建 partition 时的注册时机（必须在加载 URL 之前）。",
+      "evidence": "L239「主进程 session.webRequest.onBeforeRequest 域名白名单：默认空…非白名单 → cancel」；L109「每插件一个 WebContentsView，且独立 partition: persist:plugin-<id>」；L282「唯一出网路径是主进程的 AI 调用」。",
+      "required_fix": "写明：为每个插件 partition 在创建 view 之前取 session.fromPartition(id) 并注册同一 handler，另对 defaultSession 与 shell 一起注册；给出注册函数签名 ensureNetGuard(sess) 与调用点清单；验收补一条「net-escape 在 plugin partition 内 fetch 也必须 reject」。",
+      "blocks_what": "隐私承诺与 G-12 的验收都可被一个 session 选择错误绕过；这条是安全属性，不是实现细节。"
+    },
+    {
+      "id": "B-15",
+      "clause": "G-8 数据根解析 + §5 数据根 + G-1 打包冒烟",
+      "type": "infeasible",
+      "finding": "两处不可执行。①数据根第 1 顺位依赖 `.env` 里的 `ARK_DATA_DIR`，但全文没说谁加载 .env：Electron 主进程不会自动读 .env，electron-vite 只把 `.env` 用于构建期 `import.meta.env`（且仅 VITE_ 前缀），依赖白名单里也没有 dotenv。于是本次机器上 `F:\\gal\\workstation\\data` 这条路径实际不会被读到，回落到顺位 2/3。②顺位 2 是 exe 同级 `data/`，而 G-1 要求 `pnpm package` 后运行安装产物做冒烟；若 NSIS 为默认 per-machine 安装到 Program Files，exe 同级目录不可写，安装版启动即失败（写库、写日志、写 secrets 全挂）。计划未指定 NSIS 安装模式与不可写时的回退。",
+      "evidence": "L121-125 数据根解析顺序与「当前机 .env 写 ARK_DATA_DIR=F:\\gal\\workstation\\data」；L35「打包冒烟：pnpm package 后运行安装产物，能启动并打印 PRAGMA journal_mode = wal」；L280「写在 .env，不写进源码」；白名单 L36 无 dotenv。",
+      "required_fix": "写明 .env 加载方式（自写 12 行解析器在 app.ready 前读 exe 同级/仓库根的 .env，或直接用 `process.env` + `dotenv` 并把它列入白名单）；数据根改为「ARK_DATA_DIR → exe 同级 data（若可写，用 fs.accessSync 探测）→ %APPDATA%\\ARK\\data」；明确 NSIS 为 per-user（oneClick:false, perMachine:false）或给出 per-machine 下的回退。",
+      "blocks_what": "G-8 的数据根条款在目标机器上不会生效；安装产物的冒烟可能因为目录只读而永远失败，且失败原因会被误判为 better-sqlite3/ABI 问题（R-3 的触发信号重叠）。"
+    },
+    {
+      "id": "B-16",
+      "clause": "G-2 构造参数 vs G-4 呼出语义",
+      "type": "contradiction",
+      "finding": "G-2(a) 把 `alwaysOnTop: false` 冻结进快照，G-4 要求呼出后是「全屏覆盖层」并要接收键盘输入，但全文没有任何一条规定呼出时是否 setAlwaysOnTop(true)/focus()，也没有任何断言覆盖「呼出后窗口位于最前且拿到焦点」。参数快照 forever-false 与覆盖层语义冲突：在别的窗口（如全屏 IDE 之外的普通前台窗口）之上呼出时可能被遮挡；而 G-3 又要求检测到全屏应用时禁用热区——两处对「覆盖谁」的假设没对齐。",
+      "evidence": "L44-46 快照含 \"alwaysOnTop\": false；L71「呼出：按光标所在屏 workArea 全屏；fade + scale 入场」；L66「检测到前台全屏应用或演示模式开启时自动禁用」（仅约束热区，未约束热键）。",
+      "required_fix": "规定呼出时执行 showInactive→setAlwaysOnTop(true,'screen-saver')? 与 focus 的确切序列（或明确不置顶并接受遮挡），并把该序列写进可断言的调用快照；同时说明热键呼出在前台全屏应用下的行为（是否也不呼出）。",
+      "blocks_what": "核心承诺「呼出即是完整工作环境」没有可判定的行为契约；e2e 只能断言 isVisible()，无法发现被遮挡或未获焦点这类真实失败。"
+    }
+  ],
+  "nonblocking": [
+    {
+      "id": "N-01",
+      "clause": "G-9 FTS 外部内容表维护",
+      "finding": "external content 模式下索引不会自愈：任何绕过应用层（迁移脚本、手工 SQL、后续插件直写 db）的写入都会让 notes_fts 与 notes 永久不一致，且没有 rebuild 入口。另外 bigram_* 是 NOT NULL，迁移既存行时必须回填，计划未提。",
+      "suggestion": "启动自检加 `INSERT INTO notes_fts(notes_fts) VALUES('rebuild')` 的显式命令与一条一致性抽查用例；migrate 里补 bigram 回填语句。"
+    },
+    {
+      "id": "N-02",
+      "clause": "G-9 buildQuery",
+      "finding": "「对 toBigram(q) 的各 2-gram 用 AND 拼接，同时查 title 与 body」未写清括号：应为 `((bigram_title:t1 OR bigram_body:t1) AND (bigram_title:t2 OR bigram_body:t2) ...)`。按字面实现成 `col:a AND col:b` 会要求所有 bigram 落在同一列，验收表 N1（标题/正文分列命中）将直接失败。CJK 分支也没说是否加 `*` 前缀。",
+      "suggestion": "给出 buildQuery 的伪代码级表达式与 title/body 的 OR 包裹，明确前缀通配只用于纯拉丁分支。"
+    },
+    {
+      "id": "N-03",
+      "clause": "G-9 固定语料期望值",
+      "finding": "期望值按 updated_at desc 排序，但没有规定测试如何固定时间戳；同一毫秒内插入 N1/N2 时「工作 → [N2, N1]」的顺序不确定，断言会抖动。",
+      "suggestion": "测试用显式 updated_at（如 1000/2000/3000）插入，并在断言里同时校验排序键。"
+    },
+    {
+      "id": "N-04",
+      "clause": "G-11 setContentProtection 局限描述",
+      "finding": "「只挡住基于窗口句柄的截屏 API（BitBlt/WDA）；OBS 显示器捕获…不受约束」不准确：Win10 2004+ 的 WDA_EXCLUDEFROMCAPTURE 对 DXGI Desktop Duplication（OBS 显示器捕获的主要路径）同样生效，窗口在录制里是黑的。反过来的真实风险计划没写：G-2 强制 `transparent: true`（分层窗口），SetWindowDisplayAffinity 在分层/透明窗口上有静默不生效的已知报告，而 setContentProtection 不返回任何结果。",
+      "suggestion": "改写局限为「挡 DWM/WDA 与 DXGI 复制（Win10 2004+），不挡采集卡与手机拍屏」；在 M10 加一条前置实验：透明窗口下开启后先自检（读取 WDA 生效标志或截图对比），失败则提示关闭透明或降级。"
+    },
+    {
+      "id": "N-05",
+      "clause": "G-12 CSP 与 G-9 Monaco",
+      "finding": "CSP 只给了 default-src/script-src/style-src/img-src/connect-src，缺 `worker-src` 与 `font-src`。Monaco 的语言服务 worker 若以 blob: URL 创建，会被 default-src 'self' 拦掉（worker-src 回落 default-src），表现为编辑器能显示但补全/语法检查失效，而 G-9 的现有断言不会发现。",
+      "suggestion": "明确 Monaco worker 用文件方式加载（随包 emit editor.worker.js 并用同源 URL），或在 CSP 里显式加 `worker-src 'self'`（若必须 blob 则加 `blob:`），并补一条「Monaco worker 已启动」的断言。"
+    },
+    {
+      "id": "N-06",
+      "clause": "G-3 边缘热区 / R-6",
+      "finding": "G-3 写 `setInterval(50ms)`，R-6 写「220ms 轮询热区」——同一参数两个值，R-6 的 CPU 缓解因此无法核对。同时负向控制只覆盖「开关关闭」；缺少「开关开启、光标在屏内自由移动 2s 不应呼出」以及「相邻显示器边界处不应误判为边带」两条用例，而 2px 边带在多屏共边处是双向命中的高危区。",
+      "suggestion": "统一为 50ms；补两条负向用例（屏内移动、共边扫描）与一条 R-6 可测的 CPU 指标（如 60s 内主进程 CPU 时间增量 < 0.5s）。"
+    },
+    {
+      "id": "N-07",
+      "clause": "G-5 tokens 单一来源 / ARK-COLOR-3",
+      "finding": "L82 说 tokens.css 是构建期生成的唯一来源，L83 又要求主题切换后读 `documentElement.style.getPropertyValue('--ark-accent')`（内联样式覆盖 —— 存在第二处写入点，:root 的 CSS 变量与内联变量谁是权威未定义，插件 view 拿到的是哪一份也没说）。另外「140 个 CSS 具名色」数量不对：CSS Color 4 的命名色为 148 个（含 rebeccapurple），按 140 建表会漏拦。",
+      "suggestion": "规定运行期唯一写入点为 documentElement 内联变量（tokens.css 仅作初始值与 SSR 快照），并把色名表来源固定为 CSS Color 4 全量 148 项，由脚本生成而非手抄。"
+    },
+    {
+      "id": "N-08",
+      "clause": "G-8 单实例 / ATTACH",
+      "finding": "「不产生第二个 WAL 写入者」没有可观测方法（-wal 文件的存在与否无法区分写入者数量）；另外 ATTACH 受 SQLITE_MAX_ATTACHED 限制（better-sqlite3 默认 10），插件数超过 9 时会失败，计划未提连接管理策略。",
+      "suggestion": "改为断言「第二次启动进程在 N 秒内退出且主进程收到 second-instance 事件、db 未被重新打开」；补一句「同时最多 ATTACH 3 个插件库，超出走连接池/串行 detach」。"
+    },
+    {
+      "id": "N-09",
+      "clause": "G-9 SQL（核对通过，无需动作）",
+      "finding": "三个触发器中 delete 的写法是正确的 FTS5 external content 语法：`INSERT INTO notes_fts(notes_fts, rowid, c1, c2) VALUES('delete', old.id, old.c1, old.c2)`，必须回填旧值才能反查索引项；UPDATE 先 delete 后 insert 的顺序也正确；content='notes' + content_rowid='id' + 列名与 content 表同名，均合规。",
+      "suggestion": "保留；仅在 SDS 中注明「notes 行被外部删除后需 rebuild」这一前置条件。"
+    },
+    {
+      "id": "N-10",
+      "clause": "G-10 DPAPI（核对通过，无需动作）",
+      "finding": "Windows 上 safeStorage 走 DPAPI（CryptProtectData，绑定当前用户 SID + 本机），把 data/secrets/ai.bin 拷到另一 Windows 用户下解密确实会失败——该声称成立。仅需注意它同时绑定机器，换机同样失败（这正是 E-AI-002 的两个来源，文案里只提了用户）。",
+      "suggestion": "错误文案改成「换了机器或 Windows 用户」，并保留「不可用时拒绝保存明文」的兜底（见 B-11）。"
+    },
+    {
+      "id": "N-11",
+      "clause": "G-4 失焦判据",
+      "finding": "判据第三条「焦点不在 devtools、不在系统对话框、不在本应用的任何 WebContentsView」中，「焦点在系统对话框」没有可用 API 判定（Electron 无此查询）；且「不在本应用任何 WebContentsView」与前一条 `getAllWebContents().every(wc => !wc.isFocused())` 语义重复。该判据不可完整实现。",
+      "suggestion": "改为可判定的组合：`!win.isFocused() && !win.webContents.isDevToolsFocused() && getFocusedWebContents() === null`，并注明系统对话框场景用「失焦 ≥3s 后再判」规避；失焦收起默认关，风险可接受。"
+    },
+    {
+      "id": "N-12",
+      "clause": "G-6 评分规则",
+      "finding": "「分词交集（权重 30）」没有定义分词器（白名单里也没有分词库），中文查询如何切分未定义；「同分按使用频率」之后的次级排序也未定义，导致 P95<16ms 与「首项 id 恒定」两条断言的稳定性取决于未定义行为。",
+      "suggestion": "把分词固定为「CJK 单字 + 拉丁整词」的最简规则（与 notes 的 bigram 无关），并补「频率相同则按 id 字典序」以消除不确定性。"
+    },
+    {
+      "id": "N-13",
+      "clause": "G-1 electron-updater / G-12",
+      "finding": "electron-updater 在白名单里但没有任何目标需要它；若真接入，它从主进程发起的更新检查不受 G-12 默认空白名单约束（且与「唯一出网是 AI」冲突）。留着它会给「白名单」留下一个已被授权的出网组件。",
+      "suggestion": "从白名单删除 electron-updater，或明确写「S0 不启用，仅预留，且 S1 接入时必须走 G-12 白名单」。"
+    },
+    {
+      "id": "N-14",
+      "clause": "G-3 e2e 通道",
+      "finding": "`ARK_E2E=1` 时开放的 `test:summon` IPC 若无构建期剔除，会随安装包出厂，成为任何 renderer（含插件 view）都可调用的呼出/注入通道，与 G-12 的收紧方向相反。",
+      "suggestion": "加一条硬约束：该 handler 仅在 `app.isPackaged === false && process.env.ARK_E2E === '1'` 时注册，并在打包冒烟里断言通道不存在（invoke 返回 rejected）。"
+    },
+    {
+      "id": "N-15",
+      "clause": "§9 验收总表 vs G-1 命令组",
+      "finding": "G-1 的验收命令组缺 `pnpm test` 与 `pnpm test:e2e`，而 §9 总表包含；两处「全部退出码 0」的集合不同。G-13 的从零复现只记录耗时、不设上限，与 §5「8~10 工作日」无关联，无法作为工期证据。",
+      "suggestion": "把 G-1 命令组补齐为 build/test/lint/typecheck/test:e2e/package 七条，并让 §9 直接引用 G-1 的命令组而不重复列举。"
+    }
+  ],
+  "questions_for_owner": [
+    {
+      "id": "Q-01",
+      "question": "§11（z 序）与 §12（manifest/权限）是准备补进 PLAN，还是本就打算只在 SDS 里出现？若只在 SDS，PLAN 里 G-6/G-7/G-11 的验收条款是否接受「以 SDS 为准」的引用式表述？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-02",
+      "question": "依赖上限的权威口径是「白名单 12 个集合相等」还是「≤20 个」？devDependencies 是否也在约束内（Tailwind 属哪一边）？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-03",
+      "question": "命令面板是 shell 层（主 renderer）内的 React 路由，还是又一个 WebContentsView？这决定 G-6 层叠与 G-4 焦点断言的全部写法。",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-04",
+      "question": "M7/M8 是否合并（命令面板的端到端验收依赖 notes 插件）？合并后 S0 仍是 10 个工作日上限吗？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-05",
+      "question": "G-9 的检索是否接受「bigram 粗召回 + 回表 indexOf 精确过滤」作为 S0 必做（而不是「若误命中再说」）？若接受，是否允许为此增加一条 `LIKE`/JS 过滤的额外延迟预算（如 P95 从 50ms 放宽到 80ms）？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-06",
+      "question": "安装包默认 per-user（%LOCALAPPDATA%\\Programs）还是 per-machine？这决定「exe 同级 data」是否可写，以及 G-1 打包冒烟能否通过。",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-07",
+      "question": "P-1（防截屏改用 WGC 像素断言，+1 天）与 P-2/P-3（blur 强度、是否透桌面）未定是否会改动 tokens 的取值？若会，G-5 的 CSS 变量快照测试在定稿前无法锁定。",
+      "why_blocking": false
+    }
+  ],
+  "rejected_claims": [
+    {
+      "claim": "G-7：「独立 partition: persist:plugin-<id>（强制独立 renderer 进程；否则 Chromium process-per-site 会合并，杀掉 A 连带杀掉 B）」",
+      "why": "结论方向可用但机制陈述错误，且不具备文档化保证。partition 是存储分区（StoragePartition），进程隔离只是「一个渲染进程只能服务一个 StoragePartition」这一实现约束的副作用，Electron 从未把「不同 partition ⇒ 不同进程」写成契约；反过来，同站点（都是本地 file/自定协议）的多个 view 在共用 partition 时确实会并入同一进程。计划把这条当作既定事实，却没有任何「两个插件 pid 不同」的显式断言——崩溃隔离用例只覆盖了单插件被 kill，无法证明 A 死 B 活。修法：每个 view 用独立 partition 的同时，补一条断言（两个插件 view 的 getOSProcessId() 不相等），并把「partition 仅提供存储隔离、进程隔离由该断言守护」写清楚。"
+    },
+    {
+      "claim": "G-11：「setContentProtection 只挡住基于窗口句柄的截屏 API（BitBlt/WDA）；OBS 显示器捕获、采集卡、手机拍屏不受约束。它防的是截图工具，不是录屏。」",
+      "why": "Electron 在 Win10 2004+ 使用 WDA_EXCLUDEFROMCAPTURE，该标志对 DWM 合成与 DXGI Desktop Duplication（OBS 显示器捕获的默认路径）都生效，被捕获区域为黑；因此「不防录屏」这个结论过强，「OBS 不受约束」不成立。真正该写进 README 的风险是另外两条：①采集卡/手机拍屏确实不受约束（硬件路径）；②G-2 强制的 transparent:true 属分层窗口，该亲和在部分驱动/环境下静默不生效，而 setContentProtection 无返回值可判。"
+    },
+    {
+      "claim": "G-5：「140 个 CSS 具名色（red/slate/tomato…）」",
+      "why": "CSS Color 4 的命名色为 148 个（147 个传统名 + rebeccapurple，含 transparent 与否另计）。按 140 建表会漏掉 8 个色名，ARK-COLOR-3 存在系统性漏拦；且 slate 不是 CSS 具名色（它是 Tailwind 色阶），把 Tailwind 词与 CSS 词混在同一码里，说明该表的来源未固定。修法：由脚本从 CSS Color 4 全量表生成，Tailwind 色阶只在 ARK-COLOR-4 处理。"
+    },
+    {
+      "claim": "G-1：「依赖白名单（核心依赖，恰好 12 个，脚本可数）… 计数脚本输出必须 ≤ 20」",
+      "why": "两句不可同时作为约束：≤20 允许再加 8 个不受白名单授权的依赖，「白名单」于是没有任何判据；计数口径（dependencies/optional/peer/dev/传递）未定义，而「devDependencies 不计」提供了现成绕过路径——Tailwind（§5 技术栈、G-5 的 ARK-COLOR-4 依赖其色板）就正好落在白名单之外却又是必需的。要么白名单成为集合相等的硬断言，要么删掉「白名单」这个词。"
+    },
+    {
+      "claim": "G-9：「检索实现（B-11 采纳，完整三件套）」——即该方案已被完整解决",
+      "why": "SQL 与触发器部分成立（见 N-09），但「完整」不成立：bigram AND 检索对跨词边界组合必然误命中（「工作」+「作站」⇒ 命中不含「工作站」的文档），计划自己在 R-8 里承认概率高，却把修复条件化并延期，同时验收语料不含该负例。因此这不是已解决问题，而是被移交到实施期的已知缺陷。"
+    },
+    {
+      "claim": "R-5 / R-9：「已消除」",
+      "why": "两条都建立在尚未存在的条款上：R-5 的消除手段引用「§11 z 序表」（文档无 §11）；R-9 的判据含「焦点不在系统对话框」（Electron 无此 API），且与前一条件语义重复。状态应为「缓解待定」，不能标「已消除」。"
+    }
+  ],
+  "next_action": "REVISE_ARTIFACT"
+}

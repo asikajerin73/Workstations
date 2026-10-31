@@ -1,0 +1,53 @@
+{
+  "name": "ark-workstation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "engines": { "node": ">=20 <21" },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint src/",
+    "lint:fixtures": "node scripts/lint-fixtures.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "package": "electron-vite build && electron-builder --win --x64",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 -v 33.4.11",
+    "check:deps": "node scripts/check-deps.mjs",
+    "gen": "node scripts/gen-tokens.mjs && node scripts/gen-css-color-names.mjs"
+  },
+  "dependencies": {
+    "electron": "33.4.11",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "better-sqlite3": "11.10.0",
+    "zustand": "^5.0.2",
+    "framer-motion": "^11.15.0",
+    "@tanstack/react-virtual": "^3.11.2",
+    "monaco-editor": "^0.52.2",
+    "marked": "^15.0.6",
+    "dompurify": "^3.2.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "electron-vite": "^2.3.0",
+    "electron-builder": "^25.1.8",
+    "@electron/rebuild": "^3.7.1",
+    "eslint": "^9.17.0",
+    "@typescript-eslint/parser": "8.18.2",
+    "@typescript-eslint/eslint-plugin": "8.18.2",
+    "tailwindcss": "^3.4.17",
+    "postcss": "^8.4.49",
+    "autoprefixer": "^10.4.20",
+    "vitest": "^2.1.8",
+    "@playwright/test": "^1.49.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/marked": "^5.0.2",
+    "vite": "^5.4.11"
+  }
+}

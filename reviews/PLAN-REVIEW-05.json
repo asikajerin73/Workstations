@@ -1,0 +1,236 @@
+{
+  "artifact": "PLAN",
+  "artifact_version": "v3.1",
+  "review_round": 3,
+  "reviewer_role": "final-auditor",
+  "verdict": "FAIL",
+  "reviewed_file": "F:/gal/workstation/docs/PLAN.md",
+  "reviewed_line_count": 895,
+  "note": "文件头仍写 v3.0（PLAN.md:3），M1 出口写 v3.1（PLAN.md:656），本文按 v3.1 记录。",
+  "fix_verification": [
+    {
+      "id": "F-01",
+      "claim": "§11 视图层、§12 插件契约两章真实存在且有实质内容",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:717-777（§11 视图树/z 序/bounds 计算式/焦点流转/生命周期 5 小节）、PLAN.md:779-895（§12 manifest 字段表、4 类能力、通道命名、glob 语义、senderMap 身份、7 条绕过面、错误码表、flush 契约）；并非占位，含可实现的函数签名与表结构。"
+    },
+    {
+      "id": "F-02",
+      "claim": "G-4 动效计时 t0/t1 用同一时间基准",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:137-141：t0 = 主进程 win.show() 后 Date.now()，t1 = renderer onAnimationComplete 里 Date.now()，显式注明同机同 epoch；断言改为「每次 t1-t0 ≤ 320ms」的上界而非 P50。跨进程 epoch 可比，不再恒真。"
+    },
+    {
+      "id": "F-03",
+      "claim": "G-2 的 isSkipTaskbar 改为 spy 断言",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:81-84：明确「Electron 33 无 isSkipTaskbar() getter」并改为 expect(spyOnSetSkipTaskbar).toHaveBeenCalledWith(true)。遗留见 N-05（无 setSkipTaskbar(true) 调用点）。"
+    },
+    {
+      "id": "F-04",
+      "claim": "G-9 语料含负例 N4，查询「工作站」期望 [N2]",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:384-390 语料 N4 = title「干扰项」/ body「今天工作 作站很久」(updated_at=4000)；PLAN.md:394 期望 [N2] 并注明「必须排除 N4」；其余 8 行期望值与语料逐条自洽（工作→[N4,N2,N1]、作站→[N4,N2]、工→[N4,N2,N1]）。"
+    },
+    {
+      "id": "F-05",
+      "claim": "G-9 位置校验为「必做」",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:288 标题「位置校验为**必做**不是条件项」；PLAN.md:363 阶段 2「精确过滤，必做」并给出 verifyContiguous 伪码；PLAN.md:646 R-8 缓解列同口径。不再有「若误命中再说」。"
+    },
+    {
+      "id": "F-06",
+      "claim": "G-6 Ctrl+K 对所有 WebContents 挂载",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:186「统一 handler，挂到【所有】WebContents」+ PLAN.md:197 调用点「主 renderer + 每个插件 view 的 webContents」+ PLAN.md:199 e2e 必含「焦点在插件 view 内按 Ctrl+K」，§11.4 PLAN.md:766 复述同一约束。"
+    },
+    {
+      "id": "F-07",
+      "claim": "G-12 白名单挂到每个插件 partition",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:528 ensureNetGuard(sess) 以 Session 为入参；PLAN.md:555-560 三处调用点（defaultSession / 每插件 persist:plugin-<id> / 每次新增 partition）；§11.5 生命周期 PLAN.md:772 也在 loadURL 前调用。"
+    },
+    {
+      "id": "F-08",
+      "claim": "G-12 CSP 段与 webRequest 段验收已拆开",
+      "status": "NEW_ISSUE",
+      "evidence": "拆表本身已做（PLAN.md:510-513）：CSP 段断言含「审计日志无 E-NET-001」，webRequest 段用主进程 net.request 断言「审计有 E-NET-001」。但 PLAN.md:562 仍写「在插件 partition 内（不是 defaultSession）发起请求，被阻断且审计有 E-NET-001」，未指定触发手段；若按插件 renderer fetch 实现，CSP 先拦、webRequest 不触发，与 512 行自相矛盾。详见 B-02。"
+    },
+    {
+      "id": "F-09",
+      "claim": "G-8 数据根 dev 模式不落 node_modules",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:243-251：顺位 2 改为按 app.isPackaged 分流，dev 用 path.join(app.getAppPath(),'data')；PLAN.md:264-266 启动自检断言 dev 路径不含 node_modules；PLAN.md:267 三条单测。PLAN.md:611 §5 口径同步。"
+    },
+    {
+      "id": "F-10",
+      "claim": ".env 加载器已定义",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:269-274：src/main/load-env.ts 约 15 行、whenReady() 之前、exe 同级 + 仓库根两处、已存在 env 优先不覆盖、3 条单测、不引入 dotenv。"
+    },
+    {
+      "id": "F-11",
+      "claim": "G-9 写路径明确禁止 INSERT OR REPLACE",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:320 加粗「禁止使用 INSERT OR REPLACE」并给出 FTS 残留旧词的机理；PLAN.md:322-331 唯一允许写语句为 ON CONFLICT(id) DO UPDATE（走 notes_au）；PLAN.md:335 专杀 REPLACE 陷阱的回归测例（改正文后旧词命中 0、新词命中 1）。"
+    },
+    {
+      "id": "F-12",
+      "claim": "pnpm lint 与 pnpm lint:fixtures 拆成两条命令",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:30-31 与 PLAN.md:172-174：lint 全仓零 error/warning 且 fixtures 在 eslintignore；lint:fixtures 对 plugins/fixtures/hardcoded-color 断言 ruleId 集合恰为 {ARK-COLOR-1..5}。互斥已解除（命令条数笔误见 N-02）。"
+    },
+    {
+      "id": "F-13",
+      "claim": "依赖口径为集合相等还是 ≤20、devDependencies 有无名单",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:45-63：断言1 dependencies 集合 === 11 项白名单；断言2 devDependencies ⊆ 17 项名单；断言3 |dependencies| ≤ 20。PLAN.md:612 §5 同口径。残留：断言3 在断言1 成立下恒真（N 见 F-19/N-07），devDeps 名单缺项见 N-06。"
+    },
+    {
+      "id": "F-14",
+      "claim": "§8 里程碑是否仍日期重叠",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:651-666：表头「严格串行，半日粒度，无重叠」；槽位逐段衔接 M0 D1AM / M1 D1PM / M2 D2AM-D3PM / M3 D4AM-D5AM / M4 D5PM-D7AM / M5 D7PM-D8AM / M6 D8PM-D10AM / M7 D10PM / M8 D11AM-D12PM / M9 D13 / M10 D14 / M11 D15AM，无任何交叠，且每行时长与槽宽一致。"
+    },
+    {
+      "id": "F-15",
+      "claim": "CSP 含 worker-src ... blob:",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:499 worker-src 'self' blob:；PLAN.md:502-504 给出理由（Monaco 语言服务 worker 以 blob URL 创建）与断言（Ctrl+Space 有补全 + console 无 CSP 违规）。"
+    },
+    {
+      "id": "F-16",
+      "claim": "G-1..G-13 数量与 §2 开头声明、§9 清单一致",
+      "status": "NEW_ISSUE",
+      "evidence": "13 个目标标题齐全（PLAN.md:23..565），§2 PLAN.md:20 写 13 条，§9 PLAN.md:682 写「共 13 条」；但同段算术写「自动 12 条 + 纯人工 0 条 + 混合 4 条」（=16，与 13 不一致），且 R-1 仍写「S0 只 11 条」（PLAN.md:639）。属计数矛盾，见 N-03。"
+    },
+    {
+      "id": "F-17",
+      "claim": "全文 § 引用目标章节存在",
+      "status": "NEW_ISSUE",
+      "evidence": "共 13 处 § 引用：§2/§8/§9/§11/§12 全部存在（§11=PLAN.md:717，§12=PLAN.md:779）。唯一错指：PLAN.md:197 写「（§12 生命周期表）」，但生命周期表在 §11.5（PLAN.md:768-777），§12 内无此表。见 N-08。"
+    },
+    {
+      "id": "F-18",
+      "claim": "§8 人日加总与 §5 工期区间一致",
+      "status": "PRIOR_FIXED",
+      "evidence": "PLAN.md:670 加总式 0.5+0.5+2.0+1.5+2.0+1.0+2.0+0.5+2.0+1.0+1.0+0.5 = 14.5，逐行复核无误；PLAN.md:671 与 PLAN.md:614 均写 15 个工作日（D1–D15），槽位容量 14.5 人日 + D15PM 空槽，自洽。"
+    },
+    {
+      "id": "F-19",
+      "claim": "还有没有恒真断言",
+      "status": "NEW_ISSUE",
+      "evidence": "①PLAN.md:73 `expect(new BrowserWindow(opts)).toMatchSnapshot()`：对实例做快照，序列化结果与 opts 无关（`BrowserWindow {}`），无论实现对错都通过，且在 vitest 非 Electron 运行时构造会直接抛错 —— 见 B-03；②PLAN.md:62「断言3 |dependencies| ≤ 20」在断言1 集合相等（11 项）成立后恒真。"
+    },
+    {
+      "id": "F-20",
+      "claim": "还有没有互斥条款",
+      "status": "NEW_ISSUE",
+      "evidence": "①PLAN.md:588-592 N-12 rg 模式含 -e 'clipboard' 且期望 0 命中，与 PLAN.md:563 / PLAN.md:868 要求代码里出现 setPermissionRequestHandler 拒绝 clipboard-read 互斥 —— 见 B-01；②PLAN.md:562 与 PLAN.md:512 的 E-NET-001 断言互斥 —— 见 B-02。"
+    }
+  ],
+  "blocking": [
+    {
+      "id": "B-01",
+      "clause": "§3 N-12 可执行反向断言 vs G-12 剪贴板全禁（PLAN.md:585-594）",
+      "type": "contradiction",
+      "finding": "N-12 的 rg 模式包含 -e 'clipboard'（PLAN.md:590），并规定「期望命中数 0，退出码 1」（PLAN.md:592）；而 G-12 明确要求 setPermissionRequestHandler 拒绝 clipboard-read（PLAN.md:563），§12.5 绕过面表同条同写法（PLAN.md:868）。实现只要落地 G-12，src/main 里必然出现字符串 clipboard，N-12 断言即恒失败；两条验收不可能同时通过。PLAN.md:594 声称「已删除 G-12 的 clipboard-read 例外，使该 Pattern 不再自相矛盾」与事实不符——删的是例外，pattern 里的 clipboard 仍在，且拒绝逻辑本身又把该字面量带回来。",
+      "evidence": "PLAN.md:590（-e 'clipboard'）、PLAN.md:592（期望 0 命中/退出码 1）、PLAN.md:563（拒绝 clipboard-read）、PLAN.md:868（§12.5 同条）、PLAN.md:594（错误的自证清白）",
+      "required_fix": "二选一并写死：①把 pattern 从 -e 'clipboard' 收窄为具体越权调用（如 -e 'clipboard\\.readText' -e 'clipboard-read' 之外的 API 名）并对 setPermissionRequestHandler 行加 --glob 排除或行内豁免；②删除 rg 的 clipboard 项，改为行为断言「插件调用 ark.clipboard.* 或触发 clipboard-read 权限请求时返回 E-PERM-001 且审计有 deny 记录」。同时删掉 594 行的错误结论。",
+      "blocks_what": "G-12 与 N-12 的并行验收；M6（网关）、M10/M11（终审逐条通过）必然二选一失败"
+    },
+    {
+      "id": "B-02",
+      "clause": "G-12 白名单断言「在插件 partition 内发起请求…审计有 E-NET-001」（PLAN.md:562）",
+      "type": "ambiguous",
+      "finding": "该断言未指定触发手段。若按最自然读法在插件 view 的 renderer 里 fetch，CSP（connect-src 'self'，PLAN.md:500）会先拦下请求，webRequest 根本不被调用，审计不会出现 E-NET-001——这与同一节刚修好的 PLAN.md:512「CSP 段应断言审计日志无 E-NET-001」直接冲突，等于把 B-10 修掉的自相矛盾在下一行又写回来。若按主进程 net.request({session}) 读法才成立，但文本没有这句话。实施者按 renderer 路径实现会得到永远失败的断言，按主进程实现又与原文「在插件 partition 内」字面不符。",
+      "evidence": "PLAN.md:562（断言原文）、PLAN.md:500（connect-src 'self'）、PLAN.md:512（CSP 段要求审计无 E-NET-001）、PLAN.md:513（webRequest 段用主进程 net.request）",
+      "required_fix": "把 562 行改写为：「webRequest 段之二（覆盖 per-partition）：主进程 `net.request({url, session: session.fromPartition('persist:plugin-<id>')})` → 断言请求被 cancel 且审计有 E-NET-001；插件 renderer 内 fetch 路径按 CSP 段断言（抛 TypeError + 审计无 E-NET-001）。」即显式钉死触发是哪一侧、期望是哪一种。",
+      "blocks_what": "M6 的 G-12 出口（per-partition 白名单这一条无法判定 pass/fail）"
+    },
+    {
+      "id": "B-03",
+      "clause": "G-2(a) 构造参数快照断言（PLAN.md:70-77）",
+      "type": "untestable",
+      "finding": "`expect(new BrowserWindow(opts)).toMatchSnapshot()` 断言的是 BrowserWindow 实例的快照，不是 opts：Electron 对象序列化后与九个构造字段无关（典型输出 `BrowserWindow {}`），因此该断言无论 opts 写错与否都会通过——是典型的假通过；而且单测若跑在 vitest 的 node 环境里，new BrowserWindow() 会直接抛错，实施者只能删掉或改写成别的断言。G-2(a) 的唯一「精确等于」判据因此失效（skipTaskbar:true / transparent:true 都没有被真正校验）。",
+      "evidence": "PLAN.md:73（toMatchSnapshot 作用于实例）、PLAN.md:74-76（声称「opts 精确等于」的九个字段）、PLAN.md:79/81-84（同节其他条目已改用真实 API 或 spy，唯独这条没改）",
+      "required_fix": "改为对 opts 值对象本身断言：`expect(BUILD_WINDOW_OPTS).toEqual({...九字段...})`（并把窗口创建抽成 buildWindowOptions() 纯函数），或 mock BrowserWindow 构造函数后用 `expect(Ctor).toHaveBeenCalledWith(expect.objectContaining({...}))` 捕获实参；禁止对 Electron 实例做快照。",
+      "blocks_what": "G-2(a) 的自动验收（构造参数是否真的隐形/不置顶无法判定），进而 M4 出口"
+    }
+  ],
+  "nonblocking": [
+    {
+      "id": "N-01",
+      "clause": "G-9.1 toGrams 规格（PLAN.md:337-350）",
+      "finding": "规则自相矛盾：「CJK 段：每个字符独立成 token（\"工作站\" → [\"工\",\"作\",\"站\"]）」按字面则每个 token 长度恒为 1，而紧随的「CJK 且长度 ≥ 2 → 生成相邻 2-gram」与示例「\"工作站架构\" → [\"工作\",\"作站\",\"站架\",\"架构\"]」要求以连续段为单位切 2-gram。两种读法都能通过 §G-9.1 的 8 行期望，但索引体积与 LIKE 回退判定不同（实测脚本 final2.cjs 走的是单字 token + 单字短语查询这一支）。",
+      "suggestion": "删掉「每个字符独立成 token」这句，明确写「先按 CJK 连续段切段，再对每段产出相邻 2-gram；拉丁/数字整词小写保留」，并在 SDS 里给出 toGrams('工作站架构') 与 toGrams('贴图工作站 v2') 两条可执行断言（与 350 行示例对齐）。"
+    },
+    {
+      "id": "N-02",
+      "clause": "G-1 命令条数（PLAN.md:25、PLAN.md:677）",
+      "finding": "正文写「七条命令全部退出码 0」，实际代码块列出 8 条（install/typecheck/lint/lint:fixtures/test/test:e2e/build/package，PLAN.md:28-35）；§9 也重复「七条命令」。",
+      "suggestion": "统一改为「八条命令」，或把 lint / lint:fixtures 明确声明为「同一条门禁的两个子命令」并给出计数口径。"
+    },
+    {
+      "id": "N-03",
+      "clause": "§9 计数算术与 R-1（PLAN.md:682、PLAN.md:639）",
+      "finding": "「共 13 条…自动 12 条（G-6 拆 a/b 计一条）、纯人工 0 条、混合 4 条（G-2、G-3、G-11、G-13）」：12+0+4=16≠13；按 13 条总数且 4 条混合，自动条目应为 9 条。另 R-1 缓解列仍写「S0 只 11 条」，与 13 条冲突。",
+      "suggestion": "改为「13 条：纯自动 9 条 + 混合 4 条（G-2/G-3/G-11/G-13）+ 纯人工 0 条」，并把 R-1 的「11 条」改成「13 条」。"
+    },
+    {
+      "id": "N-04",
+      "clause": "版本/轮次标识（PLAN.md:3、PLAN.md:5、PLAN.md:656）",
+      "finding": "文件头写「版本：v3.0」，M1 出口条件写「本 PLAN v3.1 通过 round-3 评审」；而 reviews/ 下已有 PLAN-REVIEW-01..04，本轮实际是第 5 次评审。产物版本号与被引用的评审轮次都对不上，后续追溯会错位。",
+      "suggestion": "头部版本改为 v3.1，M1 出口改为「本 PLAN v3.1 通过 PLAN-REVIEW-05（blocking 清零）」，变更依据补上 PLAN-REVIEW-04/05。"
+    },
+    {
+      "id": "N-05",
+      "clause": "G-2 skipTaskbar spy 的调用点（PLAN.md:74、PLAN.md:81-84、PLAN.md:88-95）",
+      "finding": "构造参数里已有 skipTaskbar:true，而呼出序列（89-95）与启动序列都没有 setSkipTaskbar(true) 调用；按现有描述 spy 永远不会被调用，断言必然失败（假失败）。",
+      "suggestion": "在 89-95 的呼出序列第 1 步前加「0. 若 !win.isSkipTaskbar 语义需要，显式调用 win.setSkipTaskbar(true)」，或把 spy 断言改为断言构造参数 skipTaskbar===true；二选一写死。"
+    },
+    {
+      "id": "N-06",
+      "clause": "devDependencies 白名单（PLAN.md:54-59）",
+      "finding": "名单为「⊆」约束，但缺 @vitejs/plugin-react、@types/node、eslint-plugin-react-hooks 等 electron-vite + React + TS 构建链的必需项；实施 M3 时必然要为加依赖而改白名单脚本，属可预期的 CONTRACT_GAP。",
+      "suggestion": "在 SDS 前把名单补全到「恰好能 pnpm build / pnpm test:e2e 跑通」的最小集合，并注明「新增 devDependency 必须同时改 scripts/check-deps.mjs」。"
+    },
+    {
+      "id": "N-07",
+      "clause": "G-1 依赖断言3（PLAN.md:62）",
+      "finding": "断言1 已要求 dependencies 集合等于 11 项，断言3「|dependencies| ≤ 20」在断言1 成立时恒真，属装饰性断言（不影响严谨性，但会稀释「三条断言」的信号）。",
+      "suggestion": "删除断言3，或把它改成语义断言「dependencies 中不得出现 *dev-only* 前缀（@types/、eslint、vite、tailwindcss）」。"
+    },
+    {
+      "id": "N-08",
+      "clause": "交叉引用（PLAN.md:197）",
+      "finding": "「（§12 生命周期表）」错指：生命周期表在 §11.5（PLAN.md:768-777），§12 内只有 manifest/能力/权限/身份/绕过面/错误码/flush。",
+      "suggestion": "改为「（§11.5 生命周期表）」。"
+    },
+    {
+      "id": "N-09",
+      "clause": "G-2(a) transparent:true vs 开放问题 P-3（PLAN.md:74、PLAN.md:713、PLAN.md:483）",
+      "finding": "G-2(a) 已把 transparent:true 写进精确快照断言，而 P-3（是否透出壁纸/纯不透明深色底）仍为未定项；G-11 的 M10 前置实验还允许「失败则降级为不透明」。用户在 M2 前选「不透明」，G-2(a) 快照即需重写。",
+      "suggestion": "在 §10 标注「P-3 定案前 G-2(a) 的 transparent 字段为 TBD，定案后同步快照」，或把 G-2(a) 快照改为对除 backgroundColor/transparent 之外字段精确、这两项按开关断言。"
+    },
+    {
+      "id": "N-10",
+      "clause": "生成文件与 ARK-COLOR 规则的相互作用（PLAN.md:168、PLAN.md:173）",
+      "finding": "ARK-COLOR-3 的数据源是脚本生成的 src/shared/css-color-names.ts（内含 148 个色名），该文件自身极可能被自定义规则命中，与「pnpm lint 全仓零 error」冲突；tokens.css 若也纳入扫描同理。文中未声明生成物豁免。",
+      "suggestion": "在 G-5 增一句：「生成物（src/shared/css-color-names.ts、src/renderer/styles/tokens.css）与 plugins/fixtures/** 一并列入 eslintignore，规则只对 src 手写代码生效」，并给出 lint:fixtures 的期望 ruleId 集合不受生成物影响的口径。"
+    },
+    {
+      "id": "N-11",
+      "clause": "G-8 ATTACH 单测与 LRU 策略（PLAN.md:235）",
+      "finding": "策略是「LRU 保留最近 3 个，超出 detach」，而单测写「断言第 11 个 attach 抛错」——正常路径下永远到不了 10 个（第 4 个就 detach），该测例需要绕过 LRU 才能构造，测的其实不是产品行为。",
+      "suggestion": "拆成两条：①LRU 行为测（第 4 次 attach 触发 detach，attached 数恒 ≤ 3）；②防御性测（绕过 LRU 直接 attach 到第 11 个 → 捕获 SQLITE_ERROR 并返回 E-DB-001、Shell 不崩）。"
+    },
+    {
+      "id": "N-12",
+      "clause": "CSP 与 dev 模式可用性（PLAN.md:492-504 vs PLAN.md:569）",
+      "finding": "CSP 只给出一份（connect-src 'self'），未区分 dev（vite dev server + HMR websocket）与打包（ark: / file:）；G-13 又要求 clone + install + pnpm dev 可跑。若 ark:// 未通过 registerSchemesAsPrivileged 注册为 standard+secure，'self' 的匹配语义与 worker/font 加载都会偏移。",
+      "suggestion": "在 G-12 增「CSP 双份口径」：dev 追加 ws: 与 dev-server origin、打包保持严格；并在 §12.5 自定义协议行补「app.whenReady 前 registerSchemesAsPrivileged([{scheme:'ark', privileges:{standard:true, secure:true, supportFetchAPI:true}}])」。"
+    }
+  ],
+  "next_action": "REVISE_ARTIFACT"
+}

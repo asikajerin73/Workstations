@@ -1,0 +1,311 @@
+{
+  "artifact": "PLAN",
+  "artifact_version": "v1.0",
+  "review_round": 1,
+  "reviewer_role": "implementer",
+  "verdict": "FAIL",
+  "blocking": [
+    {
+      "id": "B-01",
+      "clause": "G-1 (L21) / 验收总表 (L110)",
+      "type": "contradiction",
+      "finding": "G-1 的出口条件写「dist/ 与 out/ 存在」，但 §6 选的是 electron-vite（L72），这条管线默认只产出 out/（main/preload/renderer 全在 out 下），dist/ 在这份计划里没有任何生成者；同一份计划 L110 又写成「产出 out/ 与安装包」。我打开 package.json 之前必须先知道产物目录是哪一个，否则 build 脚本和后续所有 e2e 的路径断言都写不了。同时「安装包」由谁生成没有指定——§6 依赖表里没有 electron-builder/electron-forge。",
+      "evidence": "L21「`dist/` 与 `out/` 存在」；L110「pnpm build → 产出 out/ 与安装包」；L72「Vite 5 + electron-vite | 构建管线」",
+      "required_fix": "固定输出布局（out/main、out/preload、out/renderer），删掉 dist/ 或明确 dist 由哪一步产生；把打包器（electron-builder 版本 + NSIS/portable 目标）写进 §6 依赖表并纳入 G-1。",
+      "blocks_what": "T-001 的 package.json 与 build 脚本；所有 e2e 的产物路径断言。"
+    },
+    {
+      "id": "B-02",
+      "clause": "G-1 (L21) / §5 约束 (L58-L61)",
+      "type": "missing",
+      "finding": "计划没有任何一行可以变成代码骨架：没有 package.json 依赖清单（Electron 33 的具体小版本、better-sqlite3 版本、electron-vite 版本、eslint/prettier 是否引入）、没有 tsconfig 关键项（strict、module/moduleResolution、是否 composite）、没有目录布局（src/main、src/preload、src/renderer 各是什么，`plugins/` 是运行时安装目录还是仓库内源码目录）、没有 eslint 配置文件与规则清单。§5「核心依赖总数 ≤ 20（不含 devDependencies）」也没有计数口径：electron 算 runtime 还是 dev？react/react-dom 被 Vite 打包进 renderer 后算不算 runtime？这个约束现在无法被任何命令验证。",
+      "evidence": "L58「Electron 33 + React 18 + TypeScript 5 + Vite 5 + Tailwind 3」；L61「核心依赖总数 ≤ 20 个（不含 devDependencies）」（无白名单/无计数脚本）；L38「丢进 `plugins/` 即生效」",
+      "required_fix": "给出 T-001 要用的 package.json 全文（依赖+精确版本+engines.node=20.x）、目录树、tsconfig 的 compilerOptions、eslint 预设与插件清单，以及「核心依赖」的显式白名单（名字逐个列出，≤20 条）。",
+      "blocks_what": "`pnpm install && pnpm typecheck` 能否判定为通过；依赖数量约束的可验收性。"
+    },
+    {
+      "id": "B-03",
+      "clause": "G-2 (L22)",
+      "type": "untestable",
+      "finding": "G-2 的第二半「Alt-Tab 列表中不出现」没有任何命令或可观察判据：`isVisible()===false` 只证明窗口没显示，`setSkipTaskbar(true)` 只证明 API 被调用，两者都不证明 Windows 11 的 Alt-Tab 列表里没有它（任务栏与 Alt-Tab 在 Win11 由不同路径决定，工具窗口样式在部分版本仍会出现在 Alt-Tab）。更要命的是计划从未定义隐藏窗的窗口形态参数：frame/transparent/alwaysOnTop level/focusable/hasShadow/skipTaskbar 在「隐藏态」与「呼出态」是否切换——这几个参数直接决定 G-2 与 G-4 能否同时成立（不可见又要能拿键盘焦点、不被 Alt-Tab 记录又要能 Esc 关闭）。",
+      "evidence": "L22「启动 3s 后 `mainWindow.isVisible() === false`；`setSkipTaskbar(true)` 生效，Alt-Tab 列表中不出现」",
+      "required_fix": "把 G-2 拆成可判定的两条：(1) 单测断言 BrowserWindow 构造参数快照（show:false、frame:false、transparent:true、skipTaskbar:true、alwaysOnTop level、focusable:true）；(2) 人工清单一步：呼出后按 Alt+Tab 截图，图中不含 ARK。并在 SDS 给出「隐藏态/呼出态」两套窗口参数表。",
+      "blocks_what": "M3 的第一个隐形窗口实现；窗口层参数选错要整体重写。"
+    },
+    {
+      "id": "B-04",
+      "clause": "G-4 (L24) × G-9 (L29)",
+      "type": "data-loss",
+      "finding": "「失焦 800ms 后自动收起」与笔记「自动保存」之间没有时序契约：收起前是否强制 flush 未定义，自动保存的 debounce 时长也未定义。更具体的技术坑：Electron 里焦点进入 devtools、系统文件对话框、或 WebContentsView 子视图时都会触发窗口级 blur，用户点一下插件面板（或插件弹出下拉）就可能让整层 800ms 后消失，并把最后几百毫秒的编辑丢掉。",
+      "evidence": "L24「`Esc` 或失焦 800ms 后自动收起」；L29「Markdown 编辑 … 自动保存」",
+      "required_fix": "定义 blur 判据（仅在 `win.isFocused()===false` 且来源不是 devtools/系统对话框/同窗口子视图时开始计时）、收起前同步 flush 自动保存（返回 Promise，hide 在 flush 之后）、失焦收起改为默认关或 3s 可配置，并加一条 e2e：输入中触发 blur → 收起 → 再打开内容完整。",
+      "blocks_what": "笔记插件与 G-4 的联合验收；上线后会真实丢稿。"
+    },
+    {
+      "id": "B-05",
+      "clause": "Q-8 (L125) × G-6 (L26)",
+      "type": "infeasible",
+      "finding": "Q-8 定的是「每个插件独立 WebContentsView」，而 BrowserWindow 自带的 webContents 永远是最底层，子 WebContentsView 恒画在它之上。计划把命令面板/模态交给 Shell（React 渲染）来做，那么插件 view 区域会遮住命令面板——Ctrl+K 弹出来的面板看不见。这不是样式问题，是合成层顺序问题，改 CSS 无解。计划对「插件 view 与 Shell UI 的层叠关系」零字描述。",
+      "evidence": "L125「Q-8 插件隔离粒度 | 每个插件独立 WebContentsView + preload 桥 + 主进程权限网关」；L26「命令面板：`Ctrl+K` 唤起」",
+      "required_fix": "三选一并写死：(a) 命令面板用独立 frameless alwaysOnTop 子 BrowserWindow；(b) 呼出面板时对插件 view 执行 `setVisible(false)` 或 `setBounds({height:0})`；(c) 插件容器改用 `<webview>`/iframe。同时补一张「z 序与键盘焦点流转表」。",
+      "blocks_what": "G-6 全部交互；G-7 的 view 生命周期；后续所有模态（设置页、确认框）。"
+    },
+    {
+      "id": "B-06",
+      "clause": "G-6 (L26)",
+      "type": "ambiguous",
+      "finding": "两处未定：其一，`Ctrl+K` 在哪个 webContents 里捕获——插件 view 拿到焦点时 Shell 的 renderer 收不到 keydown，而用 `globalShortcut` 注册 Ctrl+K 又会在整个系统范围抢占这个组合键（和编辑器冲突）。其二，「模糊匹配」没有算法与排序规则，而 e2e 断言是「输入『新建』→回车→笔记插件新建笔记成功」，依赖结果首项确定；排序只要变一次，用例就随机红。",
+      "evidence": "L26「`Ctrl+K` 唤起，模糊匹配，键盘上下选择 + 回车执行」；L26「e2e：呼出→Ctrl+K→输入『新建』→回车→笔记插件新建笔记成功」",
+      "required_fix": "指定捕获点（主进程 `webContents.on('before-input-event')`，仅在窗口可见时吞掉 Ctrl+K）；给出评分规则（连续子串 > 前缀 > 分词交集，同分按使用频率）；e2e 断言改为「首项 id === 'notes.new'」并可注入固定频率表。",
+      "blocks_what": "G-6 的实现路径与 e2e 稳定性。"
+    },
+    {
+      "id": "B-07",
+      "clause": "G-7 (L27) / Q-8 (L125)",
+      "type": "security",
+      "finding": "权限网关只有「未声明即拒绝」六个字，工程上需要的全都缺：manifest 权限语法（`fs.read` 用什么路径表达式？glob？允许绝对路径和 `..` 吗？）、拦截点（主进程包一层 `ipcMain.handle` 还是干脆不暴露？）、通道命名（多个插件共用 ipcMain 通道会串号，A 插件能触发 B 插件的处理函数）、调用方身份如何认定（`event.senderFrame` / `webContents.id` → pluginId 的映射表在哪维护）。绕过面也全无：`will-navigate`、`setWindowOpenHandler`、`location='file:///F:/...'`、自定义协议、`<iframe>` 子帧、剪贴板、拖放放进来的文件。按字面验收「装一个故意越权的测试插件，其 `fs.read` 调用被拒绝且审计日志有记录」——如果 preload 根本不给 fs，测试插件抛的是 TypeError，审计日志一行都不会有，这条永远不可能通过。",
+      "evidence": "L27「manifest 校验、独立 WebContentsView 隔离、权限网关（未声明即拒绝）、崩溃不影响 Shell」「其 `fs.read` 调用被拒绝且审计日志有记录」；L125 Q-8",
+      "required_fix": "补一页 GATEWAY 契约：manifest.permissions JSON Schema（含路径范围写法）；每个 API 的鉴权伪代码（`pluginId = senderMap.get(event.sender.id)` → `manifest.permissions.fs.read.some(glob => realpath(arg).startsWith(glob))` → 拒绝返回 `E-PERM-001`）；通道统一 `plugin:<id>:<api>`；显式 `will-navigate` 拦截 + `setWindowOpenHandler(()=>({action:'deny'}))` + 只允许 `ark://` 协议；审计日志字段 `{ts, pluginId, api, decision, argsHash}` 落 `data/audit.log`。验收改成断言错误码 + 日志行。",
+      "blocks_what": "G-7 全部；以及之后所有插件的 API 面（先写插件后加网关，所有插件都要改）。"
+    },
+    {
+      "id": "B-08",
+      "clause": "G-7 (L27)",
+      "type": "untestable",
+      "finding": "「强杀插件进程后 Shell 仍可用」没说杀的是谁、怎么杀：主进程 PID、`webContents.getOSProcessId()`、还是任务管理器里随便挑一个？也没承认 Chromium 的 process-per-site 会让同源的多个 WebContentsView 共用同一个 renderer 进程（杀笔记插件可能连带杀掉另一个插件），因此「崩溃不影响 Shell」这条即使手工通过也不代表隔离成立。崩溃后的恢复行为（reload、错误卡片、卸载）同样没定义。",
+      "evidence": "L27「强杀插件进程后 Shell 仍可用」",
+      "required_fix": "规定测试步骤：`electronApp.evaluate` 取 `view.webContents.getOSProcessId()` → `process.kill(pid)` → 断言 shell webContents 仍可 evaluate；每个插件使用独立 partition（`persist:plugin-<id>`）强制独立进程；定义 `render-process-gone` 后的 UI 状态与自动重载策略。",
+      "blocks_what": "G-7 出口条件的「崩溃隔离」一半；插件宿主的进程模型选择。"
+    },
+    {
+      "id": "B-09",
+      "clause": "G-8 (L28) / Q-5 (L122) × §4 (L54)",
+      "type": "ambiguous",
+      "finding": "SQLite 没有 schema 这个概念（只有 main/temp/ATTACH 别名），「每插件独立 schema」必须落地成二选一：每插件 ATTACH 一个独立 db 文件，或单库 + 表名前缀 + 迁移命名空间。两者对 WAL（WAL 是 per-file 的）、迁移事务边界、备份清单（「拷走即用」到底拷几个文件）影响完全不同。另外 L28 把数据目录写死成绝对路径 `F:\\gal\\workstation\\data`，与 L54「换了台电脑，想整个搬走」直接冲突（盘符或用户名一变就废），也没说应用从哪里读这个根目录。",
+      "evidence": "L28「SQLite（WAL）+ 迁移器 + 每插件独立 schema；数据目录为 `F:\\gal\\workstation\\data`」；L54「换了台电脑，想整个搬走 | 数据全在一个目录，拷走即用」",
+      "required_fix": "选定方案（建议：主库 `data/ark.db` 只存插件元数据与迁移版本，每插件 `data/plugins/<id>.db` 用 ATTACH + 各自 `schema_migrations` 表），给出 `migrate(pluginId, targetVersion, statements[])` 接口与幂等语义、备份文件清单、以及数据根从 `ARK_DATA_DIR` 环境变量读取（默认相对 exe 的 `data/`）。",
+      "blocks_what": "所有持久化代码的第一行；改动成本随插件数量线性上升。"
+    },
+    {
+      "id": "B-10",
+      "clause": "G-1 (L21) / G-8 (L28) / R-5 (L86)",
+      "type": "missing",
+      "finding": "better-sqlite3 是原生模块，计划只在风险表里写「固定 electron-rebuild 流程，CI 脚本里加校验」，但 G-1 的构建出口完全没有打包配置：`.node` 必须从 asar 里解出来（`asarUnpack`），否则装出来的应用一启动就 `MODULE_NOT_FOUND` 或 `NODE_MODULE_VERSION` 不匹配；也没有任何 postinstall/rebuild 脚本。这意味着 D4-D5「构建通过」会在打包那一刻才炸，而那时手册/README/验收流程都已按错误假设写完。",
+      "evidence": "L21「`pnpm install && pnpm typecheck && pnpm build` 零错误产出可运行产物」；L71「better-sqlite3 | 中（需 electron-rebuild 匹配 ABI）」；L86「固定 electron-rebuild 流程，CI 脚本里加校验」",
+      "required_fix": "在 T-002/T-003 落地：`postinstall: electron-rebuild -f -w better-sqlite3`、打包配置 `asarUnpack: ['**/*.node']`、以及冒烟命令「启动打包产物 → 打开 data/ark.db → 打印 PRAGMA journal_mode」。",
+      "blocks_what": "G-1 的「可运行产物」与 G-8 的启动自检；README 的可重现性。"
+    },
+    {
+      "id": "B-11",
+      "clause": "G-9 (L29) / Q-9 (L126) / R-8 (L89)",
+      "type": "missing",
+      "finding": "bigram 方案全文只有一句「中文按字二元切分（bigram）建索引列，不用默认 unicode61」。没有 DDL、没有写入路径、没有查询路径，而这里有个硬可行性问题：better-sqlite3 没有暴露注册自定义 FTS5 tokenizer 的 API，所以「bigram 分词」不可能靠换 tokenizer 实现，只能在 JS 侧预切分成空格分隔的二元串存进一个附加列（用 unicode61 索引），查询侧同样切分再拼 AND。连带未定义的：3 字词会跨词边界误命中（搜「工作站」会命中只含「工作」「作站」两处的文档）、单字查询没有 bigram 必须回退 LIKE、中英混排不能把英文切碎、`snippet()/highlight()` 返回的带空格二元串与原文偏移对不上（高亮错位）、增量更新用 trigger 还是应用层写入、改标题/删除时索引一致性。验收「搜索关键词命中正确篇数」也没有固定语料与期望值。",
+      "evidence": "L89「中文按字二元切分（bigram）建索引列，不用默认 unicode61」；L126「Q-9 中文分词方案 | FTS5 + bigram 自建索引列」；L29「FTS5 全文检索」",
+      "required_fix": "给出完整三件套：(1) DDL——`notes(id, title, body, updated_at, bigram_title, bigram_body)` + `notes_fts(bigram_title, bigram_body, content='notes', content_rowid='id')` + insert/update/delete 三个同步 trigger；(2) `toBigram(s)` 伪代码（CJK 切二元、拉丁/数字保持整词、标点丢弃）与 `buildQuery(q)`（按 AND 拼接、≥2 字走 bigram、1 字回退 LIKE、纯拉丁走前缀 `token*`）；(3) e2e 固定语料：3 篇笔记全文 + 每个查询串的期望命中 id 列表。高亮改为应用层按原文匹配，不用 snippet()。",
+      "blocks_what": "G-9 的「搜索关键词命中正确篇数」，以及双链面板的检索性能。"
+    },
+    {
+      "id": "B-12",
+      "clause": "G-11 (L31) / R-4 (L85)",
+      "type": "untestable",
+      "finding": "G-11 标题写着「防截屏开关（setContentProtection）」，但验收条目只覆盖演示模式和持久化，防截屏本身零验收。R-4 提出的「开启后自检截图是否全黑」在技术上不成立：`webContents.capturePage()` 走 Chromium 合成器，不经过 Windows 的 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`，永远能抓到完整内容（假阳性）；改用 `desktopCapturer` 抓桌面，被排除后的窗口位置得到的是桌面背景，深色 UI 与「全黑」无法区分。另外「私密插件在桌面上均不出现」里的「桌面」在本计划中不存在（没有任何桌面挂件/壁纸层），「路径脱敏」没有替换规则，「标记为私密」没有 manifest 字段名。",
+      "evidence": "L31「防截屏开关（`setContentProtection`）… | 演示模式开启后私密插件在桌面与命令面板中均不出现；开关状态持久化」；L85「开启后自检截图是否全黑」",
+      "required_fix": "(1) 把防截屏验收改为跨进程可执行：单独起一个采集进程（PowerShell + Windows.Graphics.Capture，或 OBS 的 WGC 源）抓 PNG，断言目标窗口区域与开启前不同且不含文本像素；若接受人工，则显式降级为「手机拍屏」清单并在 G 表标注「人工」。(2) 补 manifest `ui.private: true`、脱敏规则表（`F:\\gal\\workstation\\data` → `<DATA>`、用户名 → `<USER>`、IP → `<IP>`）。(3) 删掉不存在的「桌面」面，或先定义它是什么。",
+      "blocks_what": "G-11 两个子能力；用户场景 L53「录屏时工作站不能出现在画面里」。"
+    },
+    {
+      "id": "B-13",
+      "clause": "G-3 (L23) / R-3 (L84) / Q-1 (L118)",
+      "type": "infeasible",
+      "finding": "鼠标手势：R-3 自己承认 Electron 无原生全局钩子，方案是 `uiohook-napi` + 占位符「$1 手势识别」。可行性问题有三层：(1) libuiohook/uiohook-napi 只能观察全局鼠标事件，没有 suppress/consume 能力，所以「按住右键拖出轨迹」时目标程序照样收到右键拖拽并弹出上下文菜单或进入框选——手势与宿主应用必然互相干扰；(2) Windows 低级钩子受 `LowLevelHooksTimeout` 约束，回调线程卡住会被系统直接摘钩（表现为手势随机失效）；(3) 从「原始鼠标流」到「手势」的算法整段缺失：方向量化、最小位移、采样频率、超时、抖动容忍、模板录制 UI 与模板存储格式（Q-1 说「需用户先录制模板后才可开」，但录制界面不存在）。",
+      "evidence": "L84「用 `uiohook-napi` 全局钩子 + $1 手势识别；失败则降级为『Shell 内手势』」；L23「手势与热区用手工验收清单」（清单不存在）；L118「手势需用户先录制模板后才可开」",
+      "required_fix": "二选一并写死语义：(a) 接受「只观察不吞事件」——uiohook-napi + 方向序列匹配，给出模板 JSON schema（`{name, dirs:[0,2,6], minDist:120, timeoutMs:900, tol:45}`）、匹配算法与误触阈值，并明确「手势期间宿主应用仍会有右键菜单」；(b) 用独立 helper 进程做真钩子（C#/C++ `WH_MOUSE_LL` 回调返回 1 吞事件，或本机 AutoHotkey v2 脚本），经命名管道/本地 HTTP 上报，Electron 只做消费者。",
+      "blocks_what": "G-3 的手势路径与 Q-1 的默认开关策略；M3 出口。"
+    },
+    {
+      "id": "B-14",
+      "clause": "G-3 (L23) / Q-1 (L118)",
+      "type": "missing",
+      "finding": "「屏幕边缘热区」没有任何实现机制：不用全局钩子就不知道鼠标在哪里。现实只有两条路——轮询 `screen.getCursorScreenPoint()`（常驻定时器，与 L12「不常驻、不打扰」的原则直接冲突），或每条屏幕边缘放一个 1px 透明置顶 click-through 窗口（会出现在别人的录屏/截屏里，和 G-11 打架；多显示器要 N 个窗口且各屏 DPI 不同）。计划既没选，也没给热区宽度、停留时长、多屏边界判定、全屏应用时的抑制规则。",
+      "evidence": "L23「三种呼出方式全部实现且各自可独立开关：全局热键、鼠标手势、屏幕边缘热区」；L118「热区默认关」；L12「不常驻、不弹窗、不打扰」",
+      "required_fix": "指定方案（建议：主进程 `setInterval(50ms)` 轮询，命中 `getDisplayNearestPoint(cursor).workArea` 的 2px 边缘带且持续 150ms 触发；全屏应用/演示模式下自动禁用），写清多显示器逐屏判定与 DPI 处理，并把「轮询成本」写进风险表。",
+      "blocks_what": "G-3 第三个触发源；M3 出口条件。"
+    },
+    {
+      "id": "B-15",
+      "clause": "§5 约束 (L62)",
+      "type": "security",
+      "finding": "「任何笔记/剪贴板/文件内容不得出网；唯一出网路径是用户显式配置的 AI API」是项目的立身之本，但零实现、零验收：插件 WebContentsView 默认就能 `fetch('https://任意域名')`，Shell 没有 CSP，没有 `session.webRequest` 白名单，没有 `setPermissionRequestHandler`。现在这条约束既没被强制，也无法被任何命令证明——而它一旦晚做，所有插件都要回头改。",
+      "evidence": "L62「隐私约束：任何笔记/剪贴板/文件内容不得出网；唯一出网路径是用户显式配置的 AI API 调用」",
+      "required_fix": "落三条可测机制并新增 G-13：(1) 全窗口 CSP `default-src 'self'; connect-src 'self' https://api.deepseek.com`；(2) 主进程 `session.webRequest.onBeforeRequest` 域名白名单，非白名单 `cancel` 并写审计；(3) e2e：测试插件里 `fetch('https://example.com')` 必须 reject，且 `data/audit.log` 出现 `E-NET-001`。",
+      "blocks_what": "项目核心承诺的可验证性；G-7 网关的完整语义（权限不只文件，还有网络）。"
+    },
+    {
+      "id": "B-16",
+      "clause": "G-10 (L30) / Q-2 (L119)",
+      "type": "security",
+      "finding": "「Key 本地 AES-256-GCM 加密存储」没有定义密钥来源：密钥若硬编码在包里等于明文；正解是 `safeStorage`（DPAPI 派生）加密或直接用 `safeStorage.encryptString`。也没定义 `ai.chat()` 跑在哪个进程——若放在 renderer 或经 preload 泛化暴露，插件就能读到 key 与任意构造 prompt（与 B-07 的网关叠加成数据外泄面）。流式 SSE、超时、重试、取消均未提及；错误码只有 `E-AI-001` 一个，401/429/断网/超时怎么映射缺失，单测断言写不出来。",
+      "evidence": "L30「`ai.chat()` 走 OpenAI 兼容协议（DeepSeek 可直连），Key 存本地加密配置；无 Key 时给出明确错误码」；L119「Key 本地 AES-256-GCM 加密存储」",
+      "required_fix": "固定：(1) 主进程用 `safeStorage.isEncryptionAvailable()` + `encryptString` 存 `data/secrets.bin`，禁止自带密钥常量；(2) `ai.chat` 只在主进程实现，preload 仅暴露 `{messages, model}`，返回值里不含 key 或原始 header；(3) 错误码表 E-AI-001 无 Key / 002 认证失败(401) / 003 限流(429) / 004 网络 / 005 超时，30s 超时 + 1 次重试，不做流式（S0）。",
+      "blocks_what": "G-10 的 mock server 单测断言对象；插件 API 面设计。"
+    },
+    {
+      "id": "B-17",
+      "clause": "§8 里程碑 (L95-L100)",
+      "type": "contradiction",
+      "finding": "M4 要在 D5-D6 两天内同时交付 G-6 命令面板 + G-7 插件宿主与权限网关 + G-8 数据层 + G-11 隐匿三件套，而 M5（D6-D7）又与它时间重叠。按 AGENTS.md 的实施模型（一任务一 subagent、干净上下文、DoD 要求贴 typecheck/test/build 输出），光插件宿主 + 权限网关就是 3-4 天；而且这几项有硬串行依赖（命令由插件贡献 → 先有插件宿主；插件要落盘 → 先有数据层）。照这份计划开工，我在 D5 必然卡在 B-07/B-09 两条契约还没定、G-6 命令却已无处挂载。",
+      "evidence": "L98「M4 | 插件与数据 | G-6~G-8、G-11 全绿 | D5-D6」；L99「M5 | 笔记插件 + AI 门面 | G-9、G-10 全绿 | D6-D7」；L63「S0 目标 5~7 个工作日」",
+      "required_fix": "重排为严格串行并标注依赖：窗口层(G-1..G-5) → 数据层(G-8) → 插件宿主与网关(G-7) → 命令面板(G-6) → 笔记(G-9) → AI(G-10) → 隐匿(G-11) → 文档(G-12)；把鼠标手势与边缘热区整体移到 S1，或明确 S0 只做热键并改 G-3 的文字。",
+      "blocks_what": "排期与「先做哪个」的取舍；S0 5-7 天的可信度。"
+    },
+    {
+      "id": "B-18",
+      "clause": "G-3 (L23) / 验收总表 (L112)",
+      "type": "untestable",
+      "finding": "L23 说「e2e 用例覆盖热键路径」，但 Playwright 的 Electron 驱动只能在窗口内操作 DOM 或 `electronApp.evaluate()`，无法向操作系统注入 `Ctrl+Alt+Space` 这种全局热键；写成 e2e 只能退化成「直接调用 show()」，那根本没测到 `globalShortcut.register`。而 L112 又把 G-3 整体归入人工验收（「G-2/G-3（手势与热区）」），两处自相矛盾，我不知道该写哪一条。",
+      "evidence": "L23「逐个关闭后对应触发无效、开启后有效（e2e 用例覆盖热键路径，手势与热区用手工验收清单）」；L112「逐条人工验收：G-2/G-3（手势与热区）」",
+      "required_fix": "拆成两条可判定测试：(1) 单测——`globalShortcut.register('Ctrl+Alt+Space', fn)===true` 且 `isRegistered('Ctrl+Alt+Space')===true`，反注册后为 false；(2) e2e——`ARK_E2E=1` 时注册 `test:summon` IPC 通道模拟触发热键处理器，报告里显式注明「未覆盖 OS 层按键注入」。",
+      "blocks_what": "`pnpm test:e2e` 的验收声明；G-3 的「可独立开关」证明链。"
+    }
+  ],
+  "nonblocking": [
+    {
+      "id": "N-01",
+      "clause": "G-5 (L25)",
+      "finding": "「lint 规则拦截插件硬编码颜色」没有规则名、没有实现方式，而且清单式的静态检查天然漏掉：`bg-[#123456]` 这类 Tailwind 任意值、`style={{color:'#fff'}}` 内联、canvas 绘制、`rgba()`/命名色、运行时字符串拼接、以及已装进 `plugins/` 的第三方插件（不会跑仓库的 lint）。",
+      "suggestion": "自写 ESLint 规则（匹配 `#[0-9a-fA-F]{3,8}`、`rgb(`、`hsl(` 与 Tailwind 任意值）作为第一道；再加运行时防护——插件 UI 只允许通过 `var(--ark-*)` 取色，preload 注入受控 `ark.ui.setTheme(tokenMap)`，并对插件 document 做一次样式表 CSSOM 扫描告警。"
+    },
+    {
+      "id": "N-02",
+      "clause": "G-5 (L25)",
+      "finding": "「设计 token 单一来源，生成 CSS 变量」没说生成时机与分发方式：构建期产出 `tokens.css` 文件，还是运行时把变量注入每个 WebContentsView 的 document？插件是独立文档，不注入就拿不到变量，主题切换也无法联动。",
+      "suggestion": "构建期由 `tokens.ts`（类型化对象）生成 `tokens.css` 并纳入快照测试；preload 在每个插件 view 的 `document-start` 注入一个 `<style id=\"ark-tokens\">`，主题切换时主进程广播 `theme:changed` 由 preload 重写该 style 内容。"
+    },
+    {
+      "id": "N-03",
+      "clause": "G-12 (L32)",
+      "finding": "「ADR 记录 6 条关键决策」没有列出是哪 6 条，无法判断文档是否齐备。",
+      "suggestion": "在 PLAN 里直接点名：窗口形态、插件隔离模型、数据层 schema 策略、FTS bigram、AI 密钥存储、隐匿三件套。"
+    },
+    {
+      "id": "N-04",
+      "clause": "文档头规则 (L5)",
+      "finding": "计划自订「不允许出现待定/尽量/适当/友好/高性能等不可验收词」，但正文仍有不可验收表述：L26「模糊匹配」、L51「检索要快」、L32「30 分钟内」、L53「偶发」、R-3「蓝屏级异常」。",
+      "suggestion": "逐个替换为阈值：「模糊匹配 → fzf 风格子序列，1000 项内 P95 < 16ms」；「检索要快 → 1000 篇内查询 P95 < 50ms」；「30 分钟 → 按 README 步骤计时，秒表从 clone 起算」。"
+    },
+    {
+      "id": "N-05",
+      "clause": "G-2 (L22) / N-8 (L43)",
+      "finding": "窗口隐形、无任务栏、无托盘、不做开机自启，计划没给任何退出入口或单实例保护：用户只能任务管理器杀进程；第二次启动会因为热键已被占用而 `register` 失败却无提示。",
+      "suggestion": "`app.requestSingleInstanceLock()` 失败即聚焦已有实例并退出；加托盘图标（可隐藏）或 `Ctrl+Alt+Q` 退出热键；热键注册失败时在主界面显示冲突提示并允许改键。"
+    },
+    {
+      "id": "N-06",
+      "clause": "N-3 (L38) / N-7 (L42)",
+      "finding": "「丢进 `plugins/` 即生效」与「插件不做热更新——改完重启应用」措辞冲突；且没有 manifest schema、没有校验失败时用户能看到什么。",
+      "suggestion": "统一为「启动时扫描 plugins/，校验 manifest，坏插件在设置页列出错误码并跳过」；manifest 字段表写进 SDS。"
+    },
+    {
+      "id": "N-07",
+      "clause": "G-7 (L27) / AGENTS §5",
+      "finding": "「审计日志」没有路径、格式、轮转策略，而 AGENTS.md 要求结构化日志含 `task_id`。",
+      "suggestion": "固定 `data/logs/audit.ndjson`，字段 `{ts, level, pluginId, api, decision, argsHash}`；按 10MB 轮转保留 5 份。"
+    }
+  ],
+  "questions_for_owner": [
+    {
+      "id": "Q-01",
+      "question": "产物到底放 out/ 还是 dist/？安装包由 electron-builder 还是 electron-forge 生成，目标格式是 NSIS 还是 portable？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-02",
+      "question": "插件 WebContentsView 恒在 Shell webContents 之上，命令面板/模态要用哪种方案置顶——独立子窗口、显示前隐藏插件 view、还是改用 iframe/webview 容器？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-03",
+      "question": "manifest 权限怎么表达（`fs.read` 的路径写法允许到什么程度），网关在主进程如何认定调用方是哪个插件，审计日志落在哪个文件、字段有哪些？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-04",
+      "question": "「每插件独立 schema」= 每插件一个 ATTACH 的 db 文件，还是单库表名前缀？数据根目录是绝对路径还是 `ARK_DATA_DIR`？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-05",
+      "question": "bigram 的建表 DDL、写入/更新/删除的同步方式、单字与英文的回退规则、验收用的固定语料与期望命中篇数，谁给？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-06",
+      "question": "「防截屏」允许用哪种方式证明？我可以起一个 Windows.Graphics.Capture/OBS 采集进程抓 PNG 做像素断言，还是要第二台设备/手机拍屏的人工清单？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-07",
+      "question": "手势能不能接受「只观察、吞不掉右键，宿主应用仍会弹右键菜单」这个语义？不能接受的话，是否允许引入一个本机 helper 进程（C#/AHK）做真钩子？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-08",
+      "question": "失焦 800ms 自动收起与笔记自动保存谁让路？收起前是否允许阻塞式 flush（最多等多久）？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-09",
+      "question": "透明窗口 + setContentProtection + 玻璃拟态（backdrop-blur）三者在 Windows 上首选的降级顺序是什么——黑屏时先关哪一项？",
+      "why_blocking": true
+    },
+    {
+      "id": "Q-10",
+      "question": "ADR 的 6 条具体是哪 6 条，是否已定稿可以照着写？",
+      "why_blocking": false
+    }
+  ],
+  "rejected_claims": [
+    {
+      "claim": "G-1 可以同时产出 dist/ 与 out/",
+      "why": "electron-vite 只有单一输出根（默认 out/），dist/ 无生成者；除非额外配一条独立打包步骤，否则这条验收永远不绿。"
+    },
+    {
+      "claim": "Electron + uiohook-napi 能实现「按住右键画手势」且不干扰宿主应用",
+      "why": "libuiohook/uiohook-napi 只上报事件，不提供 suppression；右键拖拽仍会被目标程序收到并弹菜单，低级钩子还会因 LowLevelHooksTimeout 被系统摘掉。"
+    },
+    {
+      "claim": "R-4「开启 setContentProtection 后自检截图是否全黑」可以验证防截屏",
+      "why": "`webContents.capturePage()` 走 Chromium 合成器，绕开 SetWindowDisplayAffinity，永远抓到内容；desktopCapturer 抓桌面得到的是被排除后的背景，与深色 UI 无法区分。"
+    },
+    {
+      "claim": "G-11 的验收覆盖了防截屏开关",
+      "why": "G-11 的验收条目只写演示模式与开关持久化，「桌面」这个面在本计划中不存在，防截屏零验收。"
+    },
+    {
+      "claim": "SQLite 支持「每插件独立 schema」",
+      "why": "SQLite 只有 main/temp 与 ATTACH 别名，没有 schema 概念；必须落成独立 db 文件或表名前缀，二者对 WAL、迁移、备份的行为完全不同。"
+    },
+    {
+      "claim": "中文 bigram 只需要建一个 FTS5 索引列即可",
+      "why": "better-sqlite3 不暴露注册自定义 FTS5 tokenizer 的 API，bigram 只能 JS 侧预切分写入 + 查询侧同样切分，且会带来跨词边界误命中、单字查询、高亮偏移三类未定义问题。"
+    },
+    {
+      "claim": "e2e（Playwright）可以覆盖全局热键路径",
+      "why": "Playwright 的 Electron 驱动无法向 OS 注入 Ctrl+Alt+Space；只能退化成直接调用 show()，等于没测 globalShortcut。"
+    },
+    {
+      "claim": "每个插件一个 WebContentsView 就保证崩溃隔离",
+      "why": "Chromium 的 process-per-site 会让同源 view 共用 renderer 进程；不显式分 partition 就无法保证杀掉 A 不影响 B。"
+    },
+    {
+      "claim": "S0 可以在 5-7 个工作日内交付 G-1~G-12",
+      "why": "M4 两天内塞进命令面板+插件宿主+权限网关+数据层+隐匿三件套，且与 M5 时间重叠；按 AGENTS 的一任务一实施者模型，仅网关与宿主就要 3-4 天。"
+    },
+    {
+      "claim": "计划满足自己规定的「无可验收词」",
+      "why": "L26「模糊匹配」、L51「检索要快」、L53「偶发」、L32「30 分钟内」仍不可判定。"
+    }
+  ],
+  "first_task_proposal": "T-001 = 只做 G-1 的最小骨架并锁死版本：一个 electron-vite 三端工程（src/main、src/preload、src/renderer）+ 一个空 BrowserWindow(frame:false, show:false, skipTaskbar:true, transparent:true)，出口是 `pnpm install && pnpm typecheck && pnpm build` 三条退出码 0 且产物统一落在 out/，本任务不引入 SQLite、不引入插件机制、不写任何业务代码。",
+  "next_action": "REVISE_ARTIFACT"
+}

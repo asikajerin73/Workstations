@@ -1,0 +1,34 @@
+{
+  "deepSpace": {
+    "id": "deep-space",
+    "name": "深空",
+    "color": {
+      "bg": "#0a0e14",
+      "surface": "#111823",
+      "surfaceHi": "#18212e",
+      "border": "#24303f",
+      "text": "#e6edf3",
+      "textDim": "#8b98a8",
+      "accent": "#4c8dff",
+      "accentSoft": "#1e3358",
+      "danger": "#ff5c5c"
+    },
+    "radius": { "sm": 6, "md": 10, "lg": 14, "xl": 20 },
+    "space": [4, 8, 12, 16, 24, 32, 48],
+    "type": {
+      "display": { "size": 40, "weight": 600, "lineHeight": 1.1 },
+      "h1": { "size": 28, "weight": 600, "lineHeight": 1.2 },
+      "h2": { "size": 20, "weight": 600, "lineHeight": 1.3 },
+      "body": { "size": 14, "weight": 400, "lineHeight": 1.5 },
+      "caption": { "size": 12, "weight": 400, "lineHeight": 1.4 },
+      "mono": { "size": 13, "weight": 400, "lineHeight": 1.5 }
+    },
+    "shadow": {
+      "card": "0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.32)",
+      "float": "0 8px 32px rgba(0, 0, 0, 0.48)",
+      "modal": "0 24px 64px rgba(0, 0, 0, 0.56)"
+    },
+    "motion": { "fast": 120, "base": 200, "slow": 320, "spring": "cubic-bezier(0.22, 1, 0.36, 1)" },
+    "surfaceBlur": 16
+  }
+}
